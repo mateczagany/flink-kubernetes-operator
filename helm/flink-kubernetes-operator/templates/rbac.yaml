@@ -64,6 +64,9 @@ rules:
       - flinksessionjobs
       - flinksessionjobs/status
       - flinksessionjobs/finalizers
+      - flinkstatesnapshots
+      - flinkstatesnapshots/status
+      - flinkstatesnapshots/finalizers
     verbs:
       - "*"
   - apiGroups:

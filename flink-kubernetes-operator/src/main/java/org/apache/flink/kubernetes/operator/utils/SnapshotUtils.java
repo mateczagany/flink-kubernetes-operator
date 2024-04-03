@@ -18,11 +18,22 @@
 package org.apache.flink.kubernetes.operator.utils;
 
 import org.apache.flink.annotation.VisibleForTesting;
+import org.apache.flink.configuration.CheckpointingOptions;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.ConfigurationUtils;
 import org.apache.flink.kubernetes.operator.api.AbstractFlinkResource;
+import org.apache.flink.kubernetes.operator.api.CrdConstants;
+import org.apache.flink.kubernetes.operator.api.FlinkStateSnapshot;
+import org.apache.flink.kubernetes.operator.api.spec.CheckpointSpec;
+import org.apache.flink.kubernetes.operator.api.spec.FlinkStateSnapshotReference;
+import org.apache.flink.kubernetes.operator.api.spec.FlinkStateSnapshotSpec;
 import org.apache.flink.kubernetes.operator.api.spec.FlinkVersion;
+import org.apache.flink.kubernetes.operator.api.spec.JobReference;
+import org.apache.flink.kubernetes.operator.api.spec.SavepointSpec;
+import org.apache.flink.kubernetes.operator.api.status.CheckpointType;
+import org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotState;
 import org.apache.flink.kubernetes.operator.api.status.JobStatus;
+import org.apache.flink.kubernetes.operator.api.status.SavepointFormatType;
 import org.apache.flink.kubernetes.operator.api.status.SnapshotInfo;
 import org.apache.flink.kubernetes.operator.api.status.SnapshotTriggerType;
 import org.apache.flink.kubernetes.operator.config.KubernetesOperatorConfigOptions;
@@ -30,6 +41,9 @@ import org.apache.flink.kubernetes.operator.reconciler.ReconciliationUtils;
 import org.apache.flink.kubernetes.operator.reconciler.SnapshotType;
 import org.apache.flink.kubernetes.operator.service.FlinkService;
 
+import org.apache.flink.shaded.guava31.com.google.common.base.Preconditions;
+
+import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.core.util.CronExpression;
@@ -132,6 +146,7 @@ public class SnapshotUtils {
      * @throws Exception An error during snapshot triggering.
      */
     public static boolean triggerSnapshotIfNeeded(
+            KubernetesClient kubernetesClient,
             FlinkService flinkService,
             AbstractFlinkResource<?, ?> resource,
             Configuration conf,
@@ -148,23 +163,175 @@ public class SnapshotUtils {
         String jobId = resource.getStatus().getJobStatus().getJobId();
         switch (snapshotType) {
             case SAVEPOINT:
-                flinkService.triggerSavepoint(
-                        jobId,
-                        triggerType,
-                        resource.getStatus().getJobStatus().getSavepointInfo(),
-                        conf);
+                var savepointFormatType =
+                        conf.get(KubernetesOperatorConfigOptions.OPERATOR_SAVEPOINT_FORMAT_TYPE);
+                var savepointDirectory =
+                        Preconditions.checkNotNull(
+                                conf.get(CheckpointingOptions.SAVEPOINT_DIRECTORY));
+
+                if (conf.get(KubernetesOperatorConfigOptions.SNAPSHOT_RESOURCE_ENABLED)) {
+                    var result =
+                            createSavepointResource(
+                                    kubernetesClient,
+                                    resource,
+                                    savepointDirectory,
+                                    SavepointFormatType.valueOf(savepointFormatType.name()));
+                    LOG.info(
+                            "Created new FlinkStateSnapshot[savepoint] '{}'...",
+                            result.getMetadata().getName());
+
+                } else {
+                    var triggerId =
+                            flinkService.triggerSavepoint(
+                                    jobId, savepointFormatType, savepointDirectory, conf);
+                    resource.getStatus()
+                            .getJobStatus()
+                            .getSavepointInfo()
+                            .setTrigger(
+                                    triggerId,
+                                    triggerType,
+                                    SavepointFormatType.valueOf(savepointFormatType.name()));
+                }
+
                 break;
             case CHECKPOINT:
-                flinkService.triggerCheckpoint(
-                        jobId,
-                        triggerType,
-                        resource.getStatus().getJobStatus().getCheckpointInfo(),
-                        conf);
+                var checkpointType =
+                        conf.get(KubernetesOperatorConfigOptions.OPERATOR_CHECKPOINT_TYPE);
+                if (conf.get(KubernetesOperatorConfigOptions.SNAPSHOT_RESOURCE_ENABLED)) {
+                    var result =
+                            createCheckpointResource(kubernetesClient, resource, checkpointType);
+                    LOG.info(
+                            "Created new FlinkStateSnapshot[checkpoint] '{}'...",
+                            result.getMetadata().getName());
+
+                } else {
+                    var triggerId =
+                            flinkService.triggerCheckpoint(
+                                    jobId,
+                                    org.apache.flink.core.execution.CheckpointType.valueOf(
+                                            checkpointType.name()),
+                                    conf);
+                    resource.getStatus()
+                            .getJobStatus()
+                            .getCheckpointInfo()
+                            .setTrigger(triggerId, triggerType, checkpointType);
+                }
+
                 break;
             default:
                 throw new IllegalArgumentException("Unsupported snapshot type: " + snapshotType);
         }
         return true;
+    }
+
+    public static String getAndValidateFlinkStateSnapshotPath(
+            KubernetesClient kubernetesClient, FlinkStateSnapshotReference snapshotRef) {
+        if (!StringUtils.isBlank(snapshotRef.getPath())) {
+            return snapshotRef.getPath();
+        }
+
+        if (StringUtils.isBlank(snapshotRef.getName())) {
+            throw new IllegalArgumentException(
+                    String.format("Invalid snapshot name: %s", snapshotRef.getName()));
+        }
+
+        FlinkStateSnapshot result;
+        if (snapshotRef.getName() != null) {
+            result =
+                    kubernetesClient
+                            .resources(FlinkStateSnapshot.class)
+                            .inNamespace(snapshotRef.getNamespace())
+                            .withName(snapshotRef.getName())
+                            .get();
+        } else {
+            result =
+                    kubernetesClient
+                            .resources(FlinkStateSnapshot.class)
+                            .withName(snapshotRef.getName())
+                            .get();
+        }
+
+        if (result == null) {
+            throw new IllegalArgumentException(
+                    String.format(
+                            "Cannot find snapshot %s in namespace %s.",
+                            snapshotRef.getNamespace(), snapshotRef.getName()));
+        }
+
+        if (FlinkStateSnapshotState.COMPLETED != result.getStatus().getState()) {
+            throw new IllegalArgumentException(
+                    String.format(
+                            "Snapshot %s/%s is not complete yet.",
+                            snapshotRef.getNamespace(), snapshotRef.getName()));
+        }
+
+        var path = result.getStatus().getPath();
+        if (StringUtils.isBlank(path)) {
+            throw new IllegalArgumentException(
+                    String.format(
+                            "Snapshot %s/%s path is incorrect: %s.",
+                            snapshotRef.getNamespace(), snapshotRef.getName(), path));
+        }
+
+        return path;
+    }
+
+    protected static FlinkStateSnapshot createFlinkStateSnapshot(
+            KubernetesClient kubernetesClient, String name, FlinkStateSnapshotSpec spec) {
+        var metadata = new ObjectMeta();
+        metadata.setName(name);
+        metadata.getLabels()
+                .put(CrdConstants.LABEL_SNAPSHOT_TYPE, SnapshotTriggerType.PERIODIC.name());
+
+        var snapshot = new FlinkStateSnapshot();
+        snapshot.setSpec(spec);
+        snapshot.setMetadata(metadata);
+
+        return kubernetesClient.resource(snapshot).create();
+    }
+
+    protected static FlinkStateSnapshot createSavepointResource(
+            KubernetesClient kubernetesClient,
+            AbstractFlinkResource<?, ?> resource,
+            String savepointDirectory,
+            SavepointFormatType savepointFormatType) {
+        var savepointSpec =
+                SavepointSpec.builder()
+                        .path(savepointDirectory)
+                        .formatType(savepointFormatType)
+                        .disposeOnDelete(false) // TODO: should be true probably
+                        .build();
+
+        var snapshotSpec =
+                FlinkStateSnapshotSpec.builder()
+                        .jobReference(JobReference.fromFlinkResource(resource))
+                        .savepoint(savepointSpec)
+                        .build();
+
+        var resourceName =
+                String.format(
+                        "savepoint-%s-%d",
+                        resource.getMetadata().getName(), System.currentTimeMillis());
+        return createFlinkStateSnapshot(kubernetesClient, resourceName, snapshotSpec);
+    }
+
+    protected static FlinkStateSnapshot createCheckpointResource(
+            KubernetesClient kubernetesClient,
+            AbstractFlinkResource<?, ?> resource,
+            CheckpointType checkpointType) {
+        var checkpointSpec = CheckpointSpec.builder().checkpointType(checkpointType).build();
+
+        var snapshotSpec =
+                FlinkStateSnapshotSpec.builder()
+                        .jobReference(JobReference.fromFlinkResource(resource))
+                        .checkpoint(checkpointSpec)
+                        .build();
+
+        var resourceName =
+                String.format(
+                        "checkpoint-%s-%d",
+                        resource.getMetadata().getName(), System.currentTimeMillis());
+        return createFlinkStateSnapshot(kubernetesClient, resourceName, snapshotSpec);
     }
 
     /**

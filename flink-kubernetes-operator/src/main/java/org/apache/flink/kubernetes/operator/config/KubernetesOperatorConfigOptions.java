@@ -298,6 +298,18 @@ public class KubernetesOperatorConfigOptions {
                                     + "Expected format: headerKey1:headerValue1,headerKey2:headerValue2.");
 
     @Documentation.Section(SECTION_DYNAMIC)
+    public static final ConfigOption<Boolean> SNAPSHOT_RESOURCE_ENABLED =
+            operatorConfig("snapshot.resource.enabled")
+                    .booleanType()
+                    .defaultValue(true)
+                    .withDescription(
+                            "Create new FlinkStateSnapshot resources for storing snapshots. "
+                                    + "Disable if you wish to use the deprecated mode and save snapshot results to "
+                                    + "FlinkDeployment/FlinkSessionJob status fields. The Operator will fallback to the "
+                                    + "legacy mode during runtime if the CRD is not found, "
+                                    + "even if this value is true.");
+
+    @Documentation.Section(SECTION_DYNAMIC)
     public static final ConfigOption<String> PERIODIC_SAVEPOINT_INTERVAL =
             operatorConfig("periodic.savepoint.interval")
                     .stringType()

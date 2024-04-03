@@ -20,6 +20,7 @@ package org.apache.flink.kubernetes.operator.utils;
 
 import org.apache.flink.kubernetes.operator.api.AbstractFlinkResource;
 import org.apache.flink.kubernetes.operator.api.FlinkDeployment;
+import org.apache.flink.kubernetes.operator.api.FlinkStateSnapshot;
 import org.apache.flink.kubernetes.operator.api.listener.FlinkResourceListener;
 import org.apache.flink.kubernetes.operator.listener.AuditUtils;
 
@@ -37,10 +38,66 @@ import java.util.function.Predicate;
 /** Helper class for creating Kubernetes events for Flink resources. */
 public class EventRecorder {
 
-    private final BiConsumer<AbstractFlinkResource<?, ?>, Event> eventListener;
+    private final BiConsumer<AbstractFlinkResource<?, ?>, Event> eventListenerFlinkResource;
+    private final BiConsumer<FlinkStateSnapshot, Event> eventListenerFlinkStateSnapshot;
 
-    public EventRecorder(BiConsumer<AbstractFlinkResource<?, ?>, Event> eventListener) {
-        this.eventListener = eventListener;
+    public EventRecorder(
+            BiConsumer<AbstractFlinkResource<?, ?>, Event> eventListenerFlinkResource,
+            BiConsumer<FlinkStateSnapshot, Event> eventListenerFlinkStateSnapshot) {
+        this.eventListenerFlinkResource = eventListenerFlinkResource;
+        this.eventListenerFlinkStateSnapshot = eventListenerFlinkStateSnapshot;
+    }
+
+    public boolean triggerSnapshotEvent(
+            FlinkStateSnapshot resource,
+            Type type,
+            Reason reason,
+            Component component,
+            String message,
+            KubernetesClient client) {
+        return triggerSnapshotEvent(resource, type, reason, message, component, null, client);
+    }
+
+    public boolean triggerSnapshotEvent(
+            FlinkStateSnapshot resource,
+            Type type,
+            Reason reason,
+            String message,
+            Component component,
+            @Nullable String messageKey,
+            KubernetesClient client) {
+        return triggerSnapshotEvent(
+                resource, type, reason.toString(), message, component, messageKey, client);
+    }
+
+    public boolean triggerSnapshotEvent(
+            FlinkStateSnapshot resource,
+            Type type,
+            String reason,
+            String message,
+            Component component,
+            KubernetesClient client) {
+        return triggerSnapshotEvent(resource, type, reason, message, component, null, client);
+    }
+
+    public boolean triggerSnapshotEvent(
+            FlinkStateSnapshot resource,
+            Type type,
+            String reason,
+            String message,
+            Component component,
+            String messageKey,
+            KubernetesClient client) {
+        return EventUtils.createOrUpdateEventWithInterval(
+                client,
+                resource,
+                type,
+                reason,
+                message,
+                component,
+                e -> eventListenerFlinkStateSnapshot.accept(resource, e),
+                messageKey,
+                null);
     }
 
     public boolean triggerEvent(
@@ -92,7 +149,7 @@ public class EventRecorder {
                 reason,
                 message,
                 component,
-                e -> eventListener.accept(resource, e),
+                e -> eventListenerFlinkResource.accept(resource, e),
                 messageKey,
                 null);
     }
@@ -117,7 +174,7 @@ public class EventRecorder {
                 reason,
                 message,
                 component,
-                e -> eventListener.accept(resource, e),
+                e -> eventListenerFlinkResource.accept(resource, e),
                 messageKey,
                 interval);
     }
@@ -137,7 +194,7 @@ public class EventRecorder {
                 reason,
                 message,
                 component,
-                e -> eventListener.accept(resource, e),
+                e -> eventListenerFlinkResource.accept(resource, e),
                 messageKey);
     }
 
@@ -165,7 +222,7 @@ public class EventRecorder {
                 reason,
                 message,
                 component,
-                e -> eventListener.accept(resource, e),
+                e -> eventListenerFlinkResource.accept(resource, e),
                 messageKey,
                 interval,
                 dedupePredicate,
@@ -185,7 +242,7 @@ public class EventRecorder {
     public static EventRecorder create(
             KubernetesClient client, Collection<FlinkResourceListener> listeners) {
 
-        BiConsumer<AbstractFlinkResource<?, ?>, Event> biConsumer =
+        BiConsumer<AbstractFlinkResource<?, ?>, Event> biConsumerFlinkResource =
                 (resource, event) -> {
                     var ctx =
                             new FlinkResourceListener.ResourceEventContext() {
@@ -215,7 +272,31 @@ public class EventRecorder {
                     AuditUtils.logContext(ctx);
                 };
 
-        return new EventRecorder(biConsumer);
+        BiConsumer<FlinkStateSnapshot, Event> biConsumerFlinkStateSnapshot =
+                (resource, event) -> {
+                    var ctx =
+                            new FlinkResourceListener.FlinkStateSnapshotEventContext() {
+                                @Override
+                                public Event getEvent() {
+                                    return event;
+                                }
+
+                                @Override
+                                public FlinkStateSnapshot getStateSnapshot() {
+                                    return resource;
+                                }
+
+                                @Override
+                                public KubernetesClient getKubernetesClient() {
+                                    return client;
+                                }
+                            };
+                    listeners.forEach(listener -> listener.onStateSnapshotEvent(ctx));
+                    AuditUtils.logContext(ctx);
+                };
+
+        // TODO: Handle listener.onSavepoint() too
+        return new EventRecorder(biConsumerFlinkResource, biConsumerFlinkStateSnapshot);
     }
 
     /** The type of the events. */
@@ -228,7 +309,8 @@ public class EventRecorder {
     public enum Component {
         Operator,
         JobManagerDeployment,
-        Job
+        Job,
+        Snapshot
     }
 
     /** The reason codes of events. */

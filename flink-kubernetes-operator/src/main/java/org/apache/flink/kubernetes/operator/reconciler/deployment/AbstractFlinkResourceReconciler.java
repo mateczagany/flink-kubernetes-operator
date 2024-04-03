@@ -44,6 +44,7 @@ import org.apache.flink.kubernetes.operator.reconciler.diff.ReflectiveDiffBuilde
 import org.apache.flink.kubernetes.operator.service.FlinkService;
 import org.apache.flink.kubernetes.operator.utils.EventRecorder;
 import org.apache.flink.kubernetes.operator.utils.FlinkUtils;
+import org.apache.flink.kubernetes.operator.utils.SnapshotUtils;
 import org.apache.flink.kubernetes.operator.utils.StatusRecorder;
 import org.apache.flink.runtime.jobmanager.HighAvailabilityMode;
 
@@ -122,12 +123,20 @@ public abstract class AbstractFlinkResourceReconciler<
             var deployConfig = ctx.getDeployConfig(spec);
             updateStatusBeforeFirstDeployment(
                     cr, spec, deployConfig, status, ctx.getKubernetesClient());
-            deploy(
-                    ctx,
-                    spec,
-                    deployConfig,
-                    Optional.ofNullable(spec.getJob()).map(JobSpec::getInitialSavepointPath),
-                    false);
+
+            Optional<String> savepointPathOpt =
+                    Optional.ofNullable(spec.getJob()).map(JobSpec::getInitialSavepointPath);
+            if (spec.getJob() != null && spec.getJob().getFlinkStateSnapshotReference() != null) {
+                var snapshotRef = spec.getJob().getFlinkStateSnapshotReference();
+                if (snapshotRef.getName() != null) {
+                    savepointPathOpt =
+                            Optional.of(
+                                    SnapshotUtils.getAndValidateFlinkStateSnapshotPath(
+                                            ctx.getKubernetesClient(), snapshotRef));
+                }
+            }
+
+            deploy(ctx, spec, deployConfig, savepointPathOpt, false);
 
             ReconciliationUtils.updateStatusForDeployedSpec(cr, deployConfig, clock);
             return;
@@ -218,7 +227,9 @@ public abstract class AbstractFlinkResourceReconciler<
         if (spec.getJob() != null) {
             var initialUpgradeMode = UpgradeMode.STATELESS;
             var initialSp = spec.getJob().getInitialSavepointPath();
+            var snapshotRef = spec.getJob().getFlinkStateSnapshotReference();
 
+            // TODO: Should we also update the last savepoint if CR was given?
             if (initialSp != null) {
                 status.getJobStatus()
                         .getSavepointInfo()

@@ -265,6 +265,7 @@ public abstract class AbstractJobReconciler<
             throws Exception {
         Optional<String> savepointOpt = Optional.empty();
 
+        // TODO: Search for FlinkStateSnapshot resources as well
         if (spec.getJob().getUpgradeMode() != UpgradeMode.STATELESS) {
             savepointOpt =
                     Optional.ofNullable(
@@ -294,12 +295,14 @@ public abstract class AbstractJobReconciler<
         } else {
             boolean savepointTriggered =
                     SnapshotUtils.triggerSnapshotIfNeeded(
+                            ctx.getKubernetesClient(),
                             ctx.getFlinkService(),
                             ctx.getResource(),
                             ctx.getObserveConfig(),
                             SnapshotType.SAVEPOINT);
             boolean checkpointTriggered =
                     SnapshotUtils.triggerSnapshotIfNeeded(
+                            ctx.getKubernetesClient(),
                             ctx.getFlinkService(),
                             ctx.getResource(),
                             ctx.getObserveConfig(),
@@ -329,18 +332,27 @@ public abstract class AbstractJobReconciler<
             throws Exception {
         LOG.info("Redeploying from savepoint");
         cancelJob(ctx, UpgradeMode.STATELESS);
-        var savepoint = currentDeploySpec.getJob().getInitialSavepointPath();
+        var snapshotRef = currentDeploySpec.getJob().getFlinkStateSnapshotReference();
         currentDeploySpec.getJob().setUpgradeMode(UpgradeMode.SAVEPOINT);
+
+        var path = currentDeploySpec.getJob().getInitialSavepointPath();
+        if (snapshotRef != null && snapshotRef.getName() != null) {
+            path =
+                    SnapshotUtils.getAndValidateFlinkStateSnapshotPath(
+                            ctx.getKubernetesClient(),
+                            snapshotRef);
+        }
+
         status.getJobStatus()
                 .getSavepointInfo()
-                .setLastSavepoint(Savepoint.of(savepoint, SnapshotTriggerType.UNKNOWN));
+                .setLastSavepoint(Savepoint.of(path, SnapshotTriggerType.UNKNOWN));
 
         if (desiredJobState == JobState.RUNNING) {
             deploy(
                     ctx,
                     currentDeploySpec,
                     ctx.getDeployConfig(currentDeploySpec),
-                    Optional.of(savepoint),
+                    Optional.of(path),
                     false);
         }
         ReconciliationUtils.updateStatusForDeployedSpec(resource, deployConfig, clock);

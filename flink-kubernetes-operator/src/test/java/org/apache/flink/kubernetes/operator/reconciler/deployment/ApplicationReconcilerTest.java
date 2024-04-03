@@ -834,8 +834,8 @@ public class ApplicationReconcilerTest extends OperatorTestBase {
         assertEquals(1, rescaleCounter.get());
         assertEquals(
                 EventRecorder.Reason.Scaling.toString(),
-                eventCollector.events.getLast().getReason());
-        assertEquals(3, eventCollector.events.size());
+                flinkResourceEventCollector.events.getLast().getReason());
+        assertEquals(3, flinkResourceEventCollector.events.size());
 
         // Job should not be stopped, we simply call the rescale api
         assertEquals(JobState.RUNNING, getReconciledJobState(deployment));
@@ -862,7 +862,7 @@ public class ApplicationReconcilerTest extends OperatorTestBase {
                         .getFlinkConfiguration()
                         .get(PipelineOptions.PARALLELISM_OVERRIDES.key()));
         assertEquals(1, rescaleCounter.get());
-        assertEquals(3, eventCollector.events.size());
+        assertEquals(3, flinkResourceEventCollector.events.size());
 
         var deploymentClone = ReconciliationUtils.clone(deployment);
 
@@ -874,7 +874,10 @@ public class ApplicationReconcilerTest extends OperatorTestBase {
         assertEquals(1, rescaleCounter.get());
         assertEquals(
                 EventRecorder.Reason.SpecChanged.toString(),
-                eventCollector.events.get(eventCollector.events.size() - 2).getReason());
+                flinkResourceEventCollector
+                        .events
+                        .get(flinkResourceEventCollector.events.size() - 2)
+                        .getReason());
 
         // If the job failed while rescaling we fall back to the regular upgrade mechanism
         deployment = deploymentClone;
@@ -1048,7 +1051,8 @@ public class ApplicationReconcilerTest extends OperatorTestBase {
     public void testDeploymentRecoveryEvent() throws Exception {
         FlinkDeployment deployment = TestUtils.buildApplicationCluster();
         reconciler.reconcile(deployment, context);
-        Assertions.assertEquals(MSG_SUBMIT, eventCollector.events.remove().getMessage());
+        Assertions.assertEquals(
+                MSG_SUBMIT, flinkResourceEventCollector.events.remove().getMessage());
         verifyAndSetRunningJobsToStatus(deployment, flinkService.listJobs());
 
         flinkService.clear();
@@ -1058,7 +1062,8 @@ public class ApplicationReconcilerTest extends OperatorTestBase {
                 .getJobStatus()
                 .setState(org.apache.flink.api.common.JobStatus.RECONCILING.name());
         reconciler.reconcile(deployment, context);
-        Assertions.assertEquals(MSG_RECOVERY, eventCollector.events.remove().getMessage());
+        Assertions.assertEquals(
+                MSG_RECOVERY, flinkResourceEventCollector.events.remove().getMessage());
     }
 
     @Test
@@ -1069,7 +1074,8 @@ public class ApplicationReconcilerTest extends OperatorTestBase {
                 .getFlinkConfiguration()
                 .put(OPERATOR_CLUSTER_HEALTH_CHECK_ENABLED.key(), "true");
         reconciler.reconcile(deployment, context);
-        Assertions.assertEquals(MSG_SUBMIT, eventCollector.events.remove().getMessage());
+        Assertions.assertEquals(
+                MSG_SUBMIT, flinkResourceEventCollector.events.remove().getMessage());
         verifyAndSetRunningJobsToStatus(deployment, flinkService.listJobs());
 
         var clusterHealthInfo = new ClusterHealthInfo();
@@ -1079,7 +1085,8 @@ public class ApplicationReconcilerTest extends OperatorTestBase {
         ClusterHealthEvaluator.setLastValidClusterHealthInfo(
                 deployment.getStatus().getClusterInfo(), clusterHealthInfo);
         reconciler.reconcile(deployment, context);
-        Assertions.assertEquals(MSG_RESTART_UNHEALTHY, eventCollector.events.remove().getMessage());
+        Assertions.assertEquals(
+                MSG_RESTART_UNHEALTHY, flinkResourceEventCollector.events.remove().getMessage());
     }
 
     @Test

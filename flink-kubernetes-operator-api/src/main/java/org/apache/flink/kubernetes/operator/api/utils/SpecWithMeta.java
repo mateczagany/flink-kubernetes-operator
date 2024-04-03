@@ -19,7 +19,6 @@
 package org.apache.flink.kubernetes.operator.api.utils;
 
 import org.apache.flink.kubernetes.operator.api.reconciler.ReconciliationMetadata;
-import org.apache.flink.kubernetes.operator.api.spec.AbstractFlinkSpec;
 
 import lombok.Value;
 
@@ -27,7 +26,7 @@ import lombok.Value;
  * Utility class for encapsulating Kubernetes resource spec and meta fields during serialization.
  */
 @Value
-public class SpecWithMeta<T extends AbstractFlinkSpec> {
+public class SpecWithMeta<T> {
     T spec;
     ReconciliationMetadata meta;
 }

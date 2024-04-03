@@ -9650,6 +9650,15 @@ spec:
                     type: integer
                   initialSavepointPath:
                     type: string
+                  flinkStateSnapshotReference:
+                    properties:
+                      namespace:
+                        type: string
+                      name:
+                        type: string
+                      path:
+                        type: string
+                    type: object
                   checkpointTriggerNonce:
                     type: integer
                   upgradeMode:

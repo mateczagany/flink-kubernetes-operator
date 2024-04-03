@@ -18,6 +18,7 @@
 package org.apache.flink.kubernetes.operator.api.reconciler;
 
 import org.apache.flink.kubernetes.operator.api.AbstractFlinkResource;
+import org.apache.flink.kubernetes.operator.api.FlinkStateSnapshot;
 import org.apache.flink.kubernetes.operator.api.status.ReconciliationState;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
@@ -38,6 +39,13 @@ public class ReconciliationMetadata {
     private ObjectMeta metadata;
 
     private boolean firstDeployment;
+
+    public static ReconciliationMetadata from(FlinkStateSnapshot resource) {
+        ObjectMeta metadata = new ObjectMeta();
+        metadata.setGeneration(resource.getMetadata().getGeneration());
+
+        return new ReconciliationMetadata(resource.getApiVersion(), metadata, false);
+    }
 
     public static ReconciliationMetadata from(AbstractFlinkResource<?, ?> resource) {
         ObjectMeta metadata = new ObjectMeta();
