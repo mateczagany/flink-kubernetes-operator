@@ -3,7 +3,7 @@ title: "Overview"
 weight: 1
 type: docs
 aliases:
-- /concepts/overview.html
+  - /concepts/overview.html
 ---
 <!--
 Licensed to the Apache Software Foundation (ASF) under one
@@ -41,10 +41,10 @@ Flink Kubernetes Operator aims to capture the responsibilities of a human operat
   - Application cluster
   - Session cluster
   - Session job
-- Built-in [High Availability](https://nightlies.apache.org/flink/flink-docs-master/docs/deployment/ha/kubernetes_ha/)   
+- Built-in [High Availability](https://nightlies.apache.org/flink/flink-docs-master/docs/deployment/ha/kubernetes_ha/)
 - Extensible framework
   - [Custom validators]({{< ref "docs/operations/plugins#custom-flink-resource-validators" >}})
-  - [Custom resource listeners]({{< ref "docs/operations/plugins#custom-flink-resource-listeners" >}})  
+  - [Custom resource listeners]({{< ref "docs/operations/plugins#custom-flink-resource-listeners" >}})
 - Advanced [Configuration]({{< ref "docs/operations/configuration" >}}) management
   - Default configurations with dynamic updates
   - Per job configuration
@@ -56,6 +56,8 @@ Flink Kubernetes Operator aims to capture the responsibilities of a human operat
   - Collect lag and utilization metrics
   - Scale job vertices to the ideal parallelism
   - Scale up and down as the load changes
+- [Snapshot management]({{< ref "docs/custom-resource/snapshots" >}})
+  - Manage snapshots via Kubernetes CRs
 ### Operations
 - Operator [Metrics]({{< ref "docs/operations/metrics-logging#metrics" >}})
   - Utilizes the well-established [Flink Metric System](https://nightlies.apache.org/flink/flink-docs-master/docs/ops/metrics)
@@ -82,12 +84,12 @@ The examples are maintained as part of the operator repo and can be found [here]
 
 **What is covered:**
 
- - Application, Session and SessionJob submission
- - Checkpointing and HA configuration
- - Java, SQL and Python Flink jobs
- - Ingress, logging and metrics configuration
- - Advanced operator deployment techniques using Kustomize
- - And some more...
+- Application, Session and SessionJob submission
+- Checkpointing and HA configuration
+- Java, SQL and Python Flink jobs
+- Ingress, logging and metrics configuration
+- Advanced operator deployment techniques using Kustomize
+- And some more...
 
 ## Known Issues & Limitations
 
@@ -107,3 +109,4 @@ drwxr-xr-x 2 9999 9999 60 May 11 15:11 b6fb2a9c-d1cd-4e65-a9a1-e825c4b47543
 ### AuditUtils can log sensitive information present in the custom resources
 As reported in [FLINK-30306](https://issues.apache.org/jira/browse/FLINK-30306) when Flink custom resources change the operator logs the change, which could include sensitive information. We suggest ingesting secrets to Flink containers during runtime to mitigate this.
 Also note that anyone who has access to the custom resources already had access to the potentially sensitive information in question, but folks who only have access to the logs could also see them now. We are planning to introduce redaction rules to AuditUtils to improve this in a later release.
+
