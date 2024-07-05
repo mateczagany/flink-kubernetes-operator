@@ -124,19 +124,7 @@ public abstract class AbstractFlinkResourceReconciler<
             updateStatusBeforeFirstDeployment(
                     cr, spec, deployConfig, status, ctx.getKubernetesClient());
 
-            Optional<String> savepointPathOpt =
-                    Optional.ofNullable(spec.getJob()).map(JobSpec::getInitialSavepointPath);
-            if (spec.getJob() != null && spec.getJob().getFlinkStateSnapshotReference() != null) {
-                var snapshotRef = spec.getJob().getFlinkStateSnapshotReference();
-                if (snapshotRef.getName() != null) {
-                    savepointPathOpt =
-                            Optional.of(
-                                    FlinkStateSnapshotUtils.getAndValidateFlinkStateSnapshotPath(
-                                            ctx.getKubernetesClient(), snapshotRef));
-                }
-            }
-
-            deploy(ctx, spec, deployConfig, savepointPathOpt, false);
+            deploy(ctx, spec, deployConfig, getInitialSnapshotPath(ctx, spec), false);
 
             ReconciliationUtils.updateStatusForDeployedSpec(cr, deployConfig, clock);
             return;
@@ -190,6 +178,22 @@ public abstract class AbstractFlinkResourceReconciler<
         if (!reconcileOtherChanges(ctx)) {
             LOG.info("Resource fully reconciled, nothing to do...");
         }
+    }
+
+    private Optional<String> getInitialSnapshotPath(
+            FlinkResourceContext<CR> ctx, AbstractFlinkSpec spec) {
+        if (spec.getJob() == null || spec.getJob().getFlinkStateSnapshotReference() == null) {
+            return Optional.ofNullable(spec.getJob()).map(JobSpec::getInitialSavepointPath);
+        }
+
+        var snapshotRef = spec.getJob().getFlinkStateSnapshotReference();
+        if (snapshotRef.getName() != null) {
+            return Optional.of(
+                    FlinkStateSnapshotUtils.getAndValidateFlinkStateSnapshotPath(
+                            ctx.getKubernetesClient(), snapshotRef));
+        }
+
+        return Optional.empty();
     }
 
     private void applyAutoscaler(FlinkResourceContext<CR> ctx) throws Exception {

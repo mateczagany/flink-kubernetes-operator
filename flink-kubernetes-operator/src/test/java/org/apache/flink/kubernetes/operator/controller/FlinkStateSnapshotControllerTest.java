@@ -125,24 +125,19 @@ public class FlinkStateSnapshotControllerTest {
         var deployment = createDeployment();
         context = TestUtils.createSnapshotContext(client, null);
         var snapshot = createSavepoint(deployment);
+        controller.reconcile(snapshot, context);
 
-        var exception =
-                assertThrows(
-                        ReconciliationException.class,
-                        () -> controller.reconcile(snapshot, context));
-        assertThat(exception.getCause()).hasMessageContaining("not found");
         assertThat(snapshot.getStatus().getState())
                 .isEqualTo(FlinkStateSnapshotState.TRIGGER_PENDING);
 
         assertThat(flinkStateSnapshotEventCollector.events)
-                .anySatisfy(
-                        event -> {
-                            assertThat(event.getReason())
-                                    .isEqualTo(EventRecorder.Reason.SnapshotError.name());
-                            assertThat(event.getType())
-                                    .isEqualTo(EventRecorder.Type.Warning.name());
-                            assertThat(event.getMessage())
-                                    .isEqualTo(exception.getCause().getMessage());
+                .hasSize(1)
+                .allSatisfy(
+                        e -> {
+                            assertThat(e.getReason())
+                                    .isEqualTo(EventRecorder.Reason.ValidationError.name());
+                            assertThat(e.getType()).isEqualTo(EventRecorder.Type.Warning.name());
+                            assertThat(e.getMessage()).contains("was not found");
                         });
     }
 

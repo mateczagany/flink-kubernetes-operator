@@ -26,7 +26,7 @@ spec:
       type: string
     - description: Current state of the snapshot.
       jsonPath: .status.state
-      name: Snapshot Status
+      name: Snapshot State
       priority: 0
       type: string
     name: v1beta1

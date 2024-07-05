@@ -91,7 +91,7 @@ public class FlinkStateSnapshotController
         observer.observe(ctx);
 
         // validate
-        if (!validateSavepoint(ctx)) {
+        if (!validateSnapshot(ctx)) {
             statusRecorder.patchAndCacheStatus(flinkStateSnapshot, ctx.getKubernetesClient());
             UpdateControl<FlinkStateSnapshot> updateControl = UpdateControl.noUpdate();
             return updateControl.rescheduleAfter(
@@ -186,7 +186,7 @@ public class FlinkStateSnapshotController
                 EventSourceUtils.getFlinkStateSnapshotInformerEventSources(context));
     }
 
-    private boolean validateSavepoint(FlinkStateSnapshotContext ctx) {
+    private boolean validateSnapshot(FlinkStateSnapshotContext ctx) {
         var savepoint = ctx.getResource();
         for (var validator : validators) {
             var validationError =
@@ -199,7 +199,7 @@ public class FlinkStateSnapshotController
                         EventRecorder.Component.Operator,
                         validationError.get(),
                         ctx.getKubernetesClient());
-                return true;
+                return false;
             }
         }
         return true;

@@ -41,7 +41,7 @@ import lombok.experimental.SuperBuilder;
 public class FlinkStateSnapshotStatus implements Diffable<FlinkStateSnapshotStatus> {
 
     /** Current state of the snapshot. */
-    @PrinterColumn(name = "Snapshot Status")
+    @PrinterColumn(name = "Snapshot State")
     private FlinkStateSnapshotState state = FlinkStateSnapshotState.TRIGGER_PENDING;
 
     /** Trigger ID of the snapshot. */
