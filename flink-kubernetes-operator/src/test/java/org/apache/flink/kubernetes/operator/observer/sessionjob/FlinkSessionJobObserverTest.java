@@ -30,7 +30,6 @@ import org.apache.flink.kubernetes.operator.api.spec.FlinkSessionJobSpec;
 import org.apache.flink.kubernetes.operator.api.status.FlinkSessionJobStatus;
 import org.apache.flink.kubernetes.operator.api.status.ReconciliationState;
 import org.apache.flink.kubernetes.operator.api.status.SnapshotTriggerType;
-import org.apache.flink.kubernetes.operator.crd.TestCustomResourceDefinitionWatcher;
 import org.apache.flink.kubernetes.operator.observer.JobStatusObserver;
 import org.apache.flink.kubernetes.operator.observer.TestObserverAdapter;
 import org.apache.flink.kubernetes.operator.reconciler.ReconciliationUtils;
@@ -69,10 +68,7 @@ public class FlinkSessionJobObserverTest extends OperatorTestBase {
                 new TestReconcilerAdapter<>(
                         this,
                         new SessionJobReconciler(
-                                eventRecorder,
-                                statusRecorder,
-                                new NoopJobAutoscaler<>(),
-                                new TestCustomResourceDefinitionWatcher()));
+                                eventRecorder, statusRecorder, new NoopJobAutoscaler<>()));
     }
 
     @Test

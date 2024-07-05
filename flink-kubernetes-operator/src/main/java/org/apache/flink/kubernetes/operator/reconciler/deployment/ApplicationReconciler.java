@@ -35,7 +35,6 @@ import org.apache.flink.kubernetes.operator.api.status.SnapshotTriggerType;
 import org.apache.flink.kubernetes.operator.autoscaler.KubernetesJobAutoScalerContext;
 import org.apache.flink.kubernetes.operator.config.KubernetesOperatorConfigOptions;
 import org.apache.flink.kubernetes.operator.controller.FlinkResourceContext;
-import org.apache.flink.kubernetes.operator.crd.CustomResourceDefinitionWatcher;
 import org.apache.flink.kubernetes.operator.exception.RecoveryFailureException;
 import org.apache.flink.kubernetes.operator.health.ClusterHealthInfo;
 import org.apache.flink.kubernetes.operator.observer.ClusterHealthEvaluator;
@@ -75,9 +74,8 @@ public class ApplicationReconciler
     public ApplicationReconciler(
             EventRecorder eventRecorder,
             StatusRecorder<FlinkDeployment, FlinkDeploymentStatus> statusRecorder,
-            JobAutoScaler<ResourceID, KubernetesJobAutoScalerContext> autoscaler,
-            CustomResourceDefinitionWatcher crdWatcher) {
-        super(eventRecorder, statusRecorder, autoscaler, crdWatcher);
+            JobAutoScaler<ResourceID, KubernetesJobAutoScalerContext> autoscaler) {
+        super(eventRecorder, statusRecorder, autoscaler);
     }
 
     @Override
@@ -251,7 +249,8 @@ public class ApplicationReconciler
         var savepointOpt = ctx.getFlinkService().cancelJob(ctx.getResource(), upgradeMode, conf);
         savepointOpt.ifPresent(
                 location -> {
-                    if (FlinkStateSnapshotUtils.shouldCreateSnapshotResource(crdWatcher, conf)) {
+                    if (FlinkStateSnapshotUtils.shouldCreateSnapshotResource(
+                            ctx.getOperatorConfig(), conf)) {
                         FlinkStateSnapshotUtils.createUpgradeSavepointResource(
                                 ctx.getKubernetesClient(),
                                 ctx.getResource(),

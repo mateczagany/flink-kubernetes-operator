@@ -30,7 +30,7 @@ import org.apache.flink.kubernetes.operator.api.status.CheckpointType;
 import org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotState;
 import org.apache.flink.kubernetes.operator.api.status.SavepointFormatType;
 import org.apache.flink.kubernetes.operator.api.status.SnapshotTriggerType;
-import org.apache.flink.kubernetes.operator.crd.CustomResourceDefinitionWatcher;
+import org.apache.flink.kubernetes.operator.config.FlinkOperatorConfiguration;
 import org.apache.flink.kubernetes.operator.reconciler.SnapshotType;
 
 import io.fabric8.kubernetes.api.model.ObjectMeta;
@@ -204,9 +204,9 @@ public class FlinkStateSnapshotUtils {
     }
 
     public static boolean shouldCreateSnapshotResource(
-            CustomResourceDefinitionWatcher crdWatcher, Configuration configuration) {
+            FlinkOperatorConfiguration operatorConfiguration, Configuration configuration) {
         return configuration.get(SNAPSHOT_RESOURCE_ENABLED)
-                && crdWatcher.isCrdInstalled(FlinkStateSnapshot.class);
+                && operatorConfiguration.isSnapshotResourcesEnabled();
     }
 
     public static String getFlinkStateSnapshotName(

@@ -89,7 +89,7 @@ public class NativeFlinkServiceTest {
     KubernetesClient client;
     KubernetesMockServer mockServer;
     private final Configuration configuration = new Configuration();
-    private final FlinkConfigManager configManager = new FlinkConfigManager(configuration);
+    private FlinkConfigManager configManager;
 
     private final FlinkResourceEventCollector flinkResourceEventCollector =
             new FlinkResourceEventCollector();
@@ -102,6 +102,7 @@ public class NativeFlinkServiceTest {
 
     @BeforeEach
     public void setup() {
+        configManager = new FlinkConfigManager(configuration);
         configuration.set(KubernetesConfigOptions.CLUSTER_ID, TestUtils.TEST_DEPLOYMENT_NAME);
         configuration.set(KubernetesConfigOptions.NAMESPACE, TestUtils.TEST_NAMESPACE);
         configuration.set(FLINK_VERSION, FlinkVersion.v1_19);

@@ -24,6 +24,7 @@ import org.apache.flink.core.plugin.PluginManager;
 import org.apache.flink.core.plugin.PluginUtils;
 import org.apache.flink.kubernetes.operator.api.FlinkDeployment;
 import org.apache.flink.kubernetes.operator.api.FlinkSessionJob;
+import org.apache.flink.kubernetes.operator.api.FlinkStateSnapshot;
 import org.apache.flink.kubernetes.operator.api.listener.FlinkResourceListener;
 import org.apache.flink.kubernetes.operator.autoscaler.AutoscalerFactory;
 import org.apache.flink.kubernetes.operator.config.FlinkConfigManager;
@@ -32,8 +33,6 @@ import org.apache.flink.kubernetes.operator.config.KubernetesOperatorConfigOptio
 import org.apache.flink.kubernetes.operator.controller.FlinkDeploymentController;
 import org.apache.flink.kubernetes.operator.controller.FlinkSessionJobController;
 import org.apache.flink.kubernetes.operator.controller.FlinkStateSnapshotController;
-import org.apache.flink.kubernetes.operator.crd.CustomResourceDefinitionWatcher;
-import org.apache.flink.kubernetes.operator.crd.CustomResourceDefinitionWatcherImpl;
 import org.apache.flink.kubernetes.operator.health.CanaryResourceManager;
 import org.apache.flink.kubernetes.operator.health.HealthProbe;
 import org.apache.flink.kubernetes.operator.health.OperatorHealthService;
@@ -86,7 +85,6 @@ public class FlinkOperator {
     private final KubernetesOperatorMetricGroup metricGroup;
     private final Collection<FlinkResourceListener> listeners;
     private final OperatorHealthService operatorHealthService;
-    private final CustomResourceDefinitionWatcher crdWatcher;
 
     private final EventRecorder eventRecorder;
     private final Configuration baseConfig;
@@ -95,7 +93,9 @@ public class FlinkOperator {
         this.configManager =
                 conf != null
                         ? new FlinkConfigManager(conf) // For testing only
-                        : new FlinkConfigManager(this::handleNamespaceChanges);
+                        : new FlinkConfigManager(
+                                this::handleNamespaceChanges,
+                                KubernetesClientUtils.isCrdInstalled(FlinkStateSnapshot.class));
 
         baseConfig = configManager.getDefaultConfig();
         this.metricGroup = OperatorMetricUtils.initOperatorMetrics(baseConfig);
@@ -108,7 +108,6 @@ public class FlinkOperator {
         this.eventRecorder = EventRecorder.create(client, listeners);
         this.ctxFactory =
                 new FlinkResourceContextFactory(configManager, metricGroup, eventRecorder);
-        this.crdWatcher = new CustomResourceDefinitionWatcherImpl(client);
         PluginManager pluginManager = PluginUtils.createPluginManagerFromRootFolder(baseConfig);
         FileSystem.initialize(baseConfig, pluginManager);
         this.operatorHealthService = OperatorHealthService.fromConfig(configManager);
@@ -176,8 +175,7 @@ public class FlinkOperator {
         var clusterResourceManager =
                 ClusterResourceManager.of(configManager.getDefaultConfig(), client);
         var autoscaler = AutoscalerFactory.create(client, eventRecorder, clusterResourceManager);
-        var reconcilerFactory =
-                new ReconcilerFactory(eventRecorder, statusRecorder, autoscaler, crdWatcher);
+        var reconcilerFactory = new ReconcilerFactory(eventRecorder, statusRecorder, autoscaler);
         var observerFactory = new FlinkDeploymentObserverFactory(eventRecorder);
         var canaryResourceManager = new CanaryResourceManager<FlinkDeployment>(configManager);
         HealthProbe.INSTANCE.registerCanaryResourceManager(canaryResourceManager);
@@ -201,8 +199,7 @@ public class FlinkOperator {
                 MetricManager.createFlinkSessionJobMetricManager(baseConfig, metricGroup);
         var statusRecorder = StatusRecorder.create(client, metricManager, listeners);
         var autoscaler = AutoscalerFactory.create(client, eventRecorder, null);
-        var reconciler =
-                new SessionJobReconciler(eventRecorder, statusRecorder, autoscaler, crdWatcher);
+        var reconciler = new SessionJobReconciler(eventRecorder, statusRecorder, autoscaler);
         var observer = new FlinkSessionJobObserver(eventRecorder);
         var canaryResourceManager = new CanaryResourceManager<FlinkSessionJob>(configManager);
         HealthProbe.INSTANCE.registerCanaryResourceManager(canaryResourceManager);
@@ -220,7 +217,12 @@ public class FlinkOperator {
     }
 
     @VisibleForTesting
-    void registerSavepointController() {
+    void registerSnapshotController() {
+        if (!configManager.getOperatorConfiguration().isSnapshotResourcesEnabled()) {
+            LOG.warn(
+                    "Skipping registering snapshot controller as snapshot resources are disabled.");
+            return;
+        }
         var metricManager =
                 MetricManager.createFlinkStateSnapshotMetricManager(baseConfig, metricGroup);
         var statusRecorder =
@@ -258,7 +260,7 @@ public class FlinkOperator {
     public void run() {
         registerDeploymentController();
         registerSessionJobController();
-        registerSavepointController();
+        registerSnapshotController();
         operator.installShutdownHook(
                 baseConfig.get(KubernetesOperatorConfigOptions.OPERATOR_TERMINATION_TIMEOUT));
         operator.start();

@@ -35,7 +35,6 @@ import org.apache.flink.kubernetes.operator.api.status.SnapshotTriggerType;
 import org.apache.flink.kubernetes.operator.autoscaler.KubernetesJobAutoScalerContext;
 import org.apache.flink.kubernetes.operator.config.KubernetesOperatorConfigOptions;
 import org.apache.flink.kubernetes.operator.controller.FlinkResourceContext;
-import org.apache.flink.kubernetes.operator.crd.CustomResourceDefinitionWatcher;
 import org.apache.flink.kubernetes.operator.exception.RecoveryFailureException;
 import org.apache.flink.kubernetes.operator.reconciler.ReconciliationUtils;
 import org.apache.flink.kubernetes.operator.reconciler.SnapshotType;
@@ -77,9 +76,8 @@ public abstract class AbstractJobReconciler<
     public AbstractJobReconciler(
             EventRecorder eventRecorder,
             StatusRecorder<CR, STATUS> statusRecorder,
-            JobAutoScaler<ResourceID, KubernetesJobAutoScalerContext> autoscaler,
-            CustomResourceDefinitionWatcher crdWatcher) {
-        super(eventRecorder, statusRecorder, autoscaler, crdWatcher);
+            JobAutoScaler<ResourceID, KubernetesJobAutoScalerContext> autoscaler) {
+        super(eventRecorder, statusRecorder, autoscaler);
     }
 
     @Override
@@ -315,7 +313,8 @@ public abstract class AbstractJobReconciler<
         Optional<String> savepointOpt = Optional.empty();
 
         if (spec.getJob().getUpgradeMode() == UpgradeMode.SAVEPOINT) {
-            if (FlinkStateSnapshotUtils.shouldCreateSnapshotResource(crdWatcher, deployConfig)) {
+            if (FlinkStateSnapshotUtils.shouldCreateSnapshotResource(
+                    ctx.getOperatorConfig(), deployConfig)) {
                 savepointOpt = getLatestSavepointPathFromFlinkStateSnapshots(ctx);
             } else {
                 savepointOpt =
@@ -381,7 +380,7 @@ public abstract class AbstractJobReconciler<
         var triggerType = triggerOpt.get();
 
         var createSnapshotResource =
-                FlinkStateSnapshotUtils.shouldCreateSnapshotResource(crdWatcher, conf);
+                FlinkStateSnapshotUtils.shouldCreateSnapshotResource(ctx.getOperatorConfig(), conf);
         if (!SnapshotTriggerType.PERIODIC.equals(triggerType) && createSnapshotResource) {
             LOG.error(
                     "For manual snapshots you need to create FlinkStateSnapshot resources or turn off configuration {}",

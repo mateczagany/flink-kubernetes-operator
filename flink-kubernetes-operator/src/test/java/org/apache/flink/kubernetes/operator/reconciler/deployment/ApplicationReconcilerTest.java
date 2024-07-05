@@ -60,7 +60,6 @@ import org.apache.flink.kubernetes.operator.api.utils.FlinkResourceUtils;
 import org.apache.flink.kubernetes.operator.autoscaler.KubernetesJobAutoScalerContext;
 import org.apache.flink.kubernetes.operator.config.FlinkOperatorConfiguration;
 import org.apache.flink.kubernetes.operator.config.KubernetesOperatorConfigOptions;
-import org.apache.flink.kubernetes.operator.crd.TestCustomResourceDefinitionWatcher;
 import org.apache.flink.kubernetes.operator.exception.RecoveryFailureException;
 import org.apache.flink.kubernetes.operator.health.ClusterHealthInfo;
 import org.apache.flink.kubernetes.operator.observer.ClusterHealthEvaluator;
@@ -154,11 +153,7 @@ public class ApplicationReconcilerTest extends OperatorTestBase {
     @Override
     public void setup() {
         appReconciler =
-                new ApplicationReconciler(
-                        eventRecorder,
-                        statusRecorder,
-                        new NoopJobAutoscaler<>(),
-                        new TestCustomResourceDefinitionWatcher());
+                new ApplicationReconciler(eventRecorder, statusRecorder, new NoopJobAutoscaler<>());
         reconciler = new TestReconcilerAdapter<>(this, appReconciler);
         operatorConfig = configManager.getOperatorConfiguration();
         executorService = Executors.newDirectExecutorService();
@@ -905,12 +900,7 @@ public class ApplicationReconcilerTest extends OperatorTestBase {
                     }
                 };
 
-        appReconciler =
-                new ApplicationReconciler(
-                        eventRecorder,
-                        statusRecorder,
-                        autoscaler,
-                        new TestCustomResourceDefinitionWatcher());
+        appReconciler = new ApplicationReconciler(eventRecorder, statusRecorder, autoscaler);
 
         var deployment = TestUtils.buildApplicationCluster();
         appReconciler.reconcile(ctxFactory.getResourceContext(deployment, context));

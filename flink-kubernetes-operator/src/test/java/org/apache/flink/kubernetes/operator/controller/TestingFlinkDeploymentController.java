@@ -27,7 +27,6 @@ import org.apache.flink.kubernetes.operator.api.spec.FlinkDeploymentSpec;
 import org.apache.flink.kubernetes.operator.api.status.FlinkDeploymentStatus;
 import org.apache.flink.kubernetes.operator.autoscaler.AutoscalerFactory;
 import org.apache.flink.kubernetes.operator.config.FlinkConfigManager;
-import org.apache.flink.kubernetes.operator.crd.TestCustomResourceDefinitionWatcher;
 import org.apache.flink.kubernetes.operator.health.CanaryResourceManager;
 import org.apache.flink.kubernetes.operator.metrics.MetricManager;
 import org.apache.flink.kubernetes.operator.observer.deployment.FlinkDeploymentObserverFactory;
@@ -105,8 +104,7 @@ public class TestingFlinkDeploymentController
                                 flinkService.getKubernetesClient(),
                                 eventRecorder,
                                 new ClusterResourceManager(
-                                        Duration.ZERO, flinkService.getKubernetesClient())),
-                        new TestCustomResourceDefinitionWatcher());
+                                        Duration.ZERO, flinkService.getKubernetesClient())));
         canaryResourceManager = new CanaryResourceManager<>(configManager);
         flinkDeploymentController =
                 new FlinkDeploymentController(

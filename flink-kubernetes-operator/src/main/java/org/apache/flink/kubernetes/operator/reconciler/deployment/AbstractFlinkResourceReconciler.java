@@ -38,7 +38,6 @@ import org.apache.flink.kubernetes.operator.api.status.SnapshotTriggerType;
 import org.apache.flink.kubernetes.operator.autoscaler.KubernetesJobAutoScalerContext;
 import org.apache.flink.kubernetes.operator.config.KubernetesOperatorConfigOptions;
 import org.apache.flink.kubernetes.operator.controller.FlinkResourceContext;
-import org.apache.flink.kubernetes.operator.crd.CustomResourceDefinitionWatcher;
 import org.apache.flink.kubernetes.operator.reconciler.Reconciler;
 import org.apache.flink.kubernetes.operator.reconciler.ReconciliationUtils;
 import org.apache.flink.kubernetes.operator.reconciler.diff.DiffResult;
@@ -80,7 +79,6 @@ public abstract class AbstractFlinkResourceReconciler<
     protected final EventRecorder eventRecorder;
     protected final StatusRecorder<CR, STATUS> statusRecorder;
     protected final JobAutoScaler<ResourceID, KubernetesJobAutoScalerContext> autoscaler;
-    protected final CustomResourceDefinitionWatcher crdWatcher;
 
     public static final String MSG_SUSPENDED = "Suspending existing deployment.";
     public static final String MSG_SPEC_CHANGED =
@@ -93,12 +91,10 @@ public abstract class AbstractFlinkResourceReconciler<
     public AbstractFlinkResourceReconciler(
             EventRecorder eventRecorder,
             StatusRecorder<CR, STATUS> statusRecorder,
-            JobAutoScaler<ResourceID, KubernetesJobAutoScalerContext> autoscaler,
-            CustomResourceDefinitionWatcher crdWatcher) {
+            JobAutoScaler<ResourceID, KubernetesJobAutoScalerContext> autoscaler) {
         this.eventRecorder = eventRecorder;
         this.statusRecorder = statusRecorder;
         this.autoscaler = autoscaler;
-        this.crdWatcher = crdWatcher;
     }
 
     @Override

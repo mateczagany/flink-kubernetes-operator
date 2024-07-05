@@ -27,7 +27,6 @@ import org.apache.flink.kubernetes.operator.api.FlinkSessionJob;
 import org.apache.flink.kubernetes.operator.api.spec.FlinkSessionJobSpec;
 import org.apache.flink.kubernetes.operator.api.status.FlinkSessionJobStatus;
 import org.apache.flink.kubernetes.operator.config.FlinkConfigManager;
-import org.apache.flink.kubernetes.operator.crd.TestCustomResourceDefinitionWatcher;
 import org.apache.flink.kubernetes.operator.health.CanaryResourceManager;
 import org.apache.flink.kubernetes.operator.metrics.MetricManager;
 import org.apache.flink.kubernetes.operator.observer.sessionjob.FlinkSessionJobObserver;
@@ -97,10 +96,7 @@ public class TestingFlinkSessionJobController
                         ValidatorUtils.discoverValidators(configManager),
                         ctxFactory,
                         new SessionJobReconciler(
-                                eventRecorder,
-                                statusRecorder,
-                                new NoopJobAutoscaler<>(),
-                                new TestCustomResourceDefinitionWatcher()),
+                                eventRecorder, statusRecorder, new NoopJobAutoscaler<>()),
                         new FlinkSessionJobObserver(eventRecorder),
                         statusRecorder,
                         eventRecorder,

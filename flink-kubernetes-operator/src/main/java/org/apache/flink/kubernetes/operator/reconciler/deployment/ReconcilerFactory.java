@@ -24,7 +24,6 @@ import org.apache.flink.kubernetes.operator.api.spec.KubernetesDeploymentMode;
 import org.apache.flink.kubernetes.operator.api.status.FlinkDeploymentStatus;
 import org.apache.flink.kubernetes.operator.autoscaler.KubernetesJobAutoScalerContext;
 import org.apache.flink.kubernetes.operator.config.Mode;
-import org.apache.flink.kubernetes.operator.crd.CustomResourceDefinitionWatcher;
 import org.apache.flink.kubernetes.operator.reconciler.Reconciler;
 import org.apache.flink.kubernetes.operator.utils.EventRecorder;
 import org.apache.flink.kubernetes.operator.utils.StatusRecorder;
@@ -40,19 +39,16 @@ public class ReconcilerFactory {
     private final EventRecorder eventRecorder;
     private final StatusRecorder<FlinkDeployment, FlinkDeploymentStatus> deploymentStatusRecorder;
     private final JobAutoScaler<ResourceID, KubernetesJobAutoScalerContext> autoscaler;
-    private final CustomResourceDefinitionWatcher crdWatcher;
     private final Map<Tuple2<Mode, KubernetesDeploymentMode>, Reconciler<FlinkDeployment>>
             reconcilerMap;
 
     public ReconcilerFactory(
             EventRecorder eventRecorder,
             StatusRecorder<FlinkDeployment, FlinkDeploymentStatus> deploymentStatusRecorder,
-            JobAutoScaler<ResourceID, KubernetesJobAutoScalerContext> autoscaler,
-            CustomResourceDefinitionWatcher crdWatcher) {
+            JobAutoScaler<ResourceID, KubernetesJobAutoScalerContext> autoscaler) {
         this.eventRecorder = eventRecorder;
         this.deploymentStatusRecorder = deploymentStatusRecorder;
         this.autoscaler = autoscaler;
-        this.crdWatcher = crdWatcher;
         this.reconcilerMap = new ConcurrentHashMap<>();
     }
 
@@ -64,14 +60,10 @@ public class ReconcilerFactory {
                 modes -> {
                     switch (modes.f0) {
                         case SESSION:
-                            return new SessionReconciler(
-                                    eventRecorder, deploymentStatusRecorder, crdWatcher);
+                            return new SessionReconciler(eventRecorder, deploymentStatusRecorder);
                         case APPLICATION:
                             return new ApplicationReconciler(
-                                    eventRecorder,
-                                    deploymentStatusRecorder,
-                                    autoscaler,
-                                    crdWatcher);
+                                    eventRecorder, deploymentStatusRecorder, autoscaler);
                         default:
                             throw new UnsupportedOperationException(
                                     String.format("Unsupported running mode: %s", modes.f0));

@@ -34,7 +34,6 @@ import org.apache.flink.kubernetes.operator.api.status.ReconciliationState;
 import org.apache.flink.kubernetes.operator.api.status.SnapshotTriggerType;
 import org.apache.flink.kubernetes.operator.config.FlinkConfigManager;
 import org.apache.flink.kubernetes.operator.config.KubernetesOperatorConfigOptions;
-import org.apache.flink.kubernetes.operator.crd.TestCustomResourceDefinitionWatcher;
 import org.apache.flink.kubernetes.operator.reconciler.ReconciliationUtils;
 import org.apache.flink.kubernetes.operator.reconciler.TestReconcilerAdapter;
 import org.apache.flink.kubernetes.operator.utils.FlinkStateSnapshotUtils;
@@ -102,10 +101,7 @@ public class SessionJobReconcilerTest extends OperatorTestBase {
                 new TestReconcilerAdapter<>(
                         this,
                         new SessionJobReconciler(
-                                eventRecorder,
-                                statusRecorder,
-                                new NoopJobAutoscaler<>(),
-                                new TestCustomResourceDefinitionWatcher()));
+                                eventRecorder, statusRecorder, new NoopJobAutoscaler<>()));
     }
 
     @ParameterizedTest

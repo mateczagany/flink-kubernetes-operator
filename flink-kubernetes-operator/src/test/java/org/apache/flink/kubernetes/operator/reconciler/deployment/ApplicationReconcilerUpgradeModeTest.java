@@ -40,7 +40,6 @@ import org.apache.flink.kubernetes.operator.api.status.Savepoint;
 import org.apache.flink.kubernetes.operator.api.status.SavepointFormatType;
 import org.apache.flink.kubernetes.operator.api.status.SnapshotTriggerType;
 import org.apache.flink.kubernetes.operator.config.KubernetesOperatorConfigOptions;
-import org.apache.flink.kubernetes.operator.crd.TestCustomResourceDefinitionWatcher;
 import org.apache.flink.kubernetes.operator.exception.RecoveryFailureException;
 import org.apache.flink.kubernetes.operator.reconciler.ReconciliationUtils;
 import org.apache.flink.kubernetes.operator.reconciler.TestReconcilerAdapter;
@@ -88,10 +87,7 @@ public class ApplicationReconcilerUpgradeModeTest extends OperatorTestBase {
                 new TestReconcilerAdapter<>(
                         this,
                         new ApplicationReconciler(
-                                eventRecorder,
-                                statusRecorder,
-                                new NoopJobAutoscaler<>(),
-                                new TestCustomResourceDefinitionWatcher()));
+                                eventRecorder, statusRecorder, new NoopJobAutoscaler<>()));
     }
 
     @ParameterizedTest

@@ -33,7 +33,6 @@ import org.apache.flink.kubernetes.operator.api.status.JobManagerDeploymentStatu
 import org.apache.flink.kubernetes.operator.api.status.SavepointFormatType;
 import org.apache.flink.kubernetes.operator.api.status.SnapshotTriggerType;
 import org.apache.flink.kubernetes.operator.config.FlinkConfigManager;
-import org.apache.flink.kubernetes.operator.crd.TestCustomResourceDefinitionWatcher;
 
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.server.mock.EnableKubernetesMockClient;
@@ -44,9 +43,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 import static org.apache.flink.kubernetes.operator.TestUtils.reconcileSpec;
-import static org.apache.flink.kubernetes.operator.config.KubernetesOperatorConfigOptions.SNAPSHOT_RESOURCE_ENABLED;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -147,25 +144,6 @@ public class FlinkStateSnapshotUtilsTest {
         assertEquals(
                 snapshotNames,
                 result.stream().map(s -> s.getMetadata().getName()).collect(Collectors.toList()));
-    }
-
-    @Test
-    public void testShouldCreateSnapshotResource() {
-        var crdWatcher = new TestCustomResourceDefinitionWatcher(List.of(FlinkStateSnapshot.class));
-        var conf = new Configuration().set(SNAPSHOT_RESOURCE_ENABLED, true);
-        assertTrue(FlinkStateSnapshotUtils.shouldCreateSnapshotResource(crdWatcher, conf));
-
-        crdWatcher = new TestCustomResourceDefinitionWatcher(List.of(FlinkStateSnapshot.class));
-        conf = new Configuration().set(SNAPSHOT_RESOURCE_ENABLED, false);
-        assertFalse(FlinkStateSnapshotUtils.shouldCreateSnapshotResource(crdWatcher, conf));
-
-        crdWatcher = new TestCustomResourceDefinitionWatcher(List.of());
-        conf = new Configuration().set(SNAPSHOT_RESOURCE_ENABLED, true);
-        assertFalse(FlinkStateSnapshotUtils.shouldCreateSnapshotResource(crdWatcher, conf));
-
-        crdWatcher = new TestCustomResourceDefinitionWatcher(List.of());
-        conf = new Configuration().set(SNAPSHOT_RESOURCE_ENABLED, false);
-        assertFalse(FlinkStateSnapshotUtils.shouldCreateSnapshotResource(crdWatcher, conf));
     }
 
     @Test
