@@ -45,6 +45,7 @@ import org.apache.flink.kubernetes.operator.config.KubernetesOperatorConfigOptio
 import org.apache.flink.kubernetes.operator.controller.FlinkResourceContext;
 import org.apache.flink.kubernetes.operator.exception.RecoveryFailureException;
 import org.apache.flink.kubernetes.operator.observer.CheckpointFetchResult;
+import org.apache.flink.kubernetes.operator.observer.CheckpointStatsResult;
 import org.apache.flink.kubernetes.operator.observer.SavepointFetchResult;
 import org.apache.flink.kubernetes.operator.service.AbstractFlinkService;
 import org.apache.flink.kubernetes.operator.service.CheckpointHistoryWrapper;
@@ -386,12 +387,12 @@ public class TestingFlinkService extends AbstractFlinkService {
     }
 
     @Override
-    public Optional<String> fetchCheckpointPath(
+    public CheckpointStatsResult fetchCheckpointStats(
             String jobId, Long checkpointId, Configuration conf) {
         if (checkpointStats.containsKey(checkpointId)) {
-            return Optional.of(checkpointStats.get(checkpointId));
+            return CheckpointStatsResult.completed(checkpointStats.get(checkpointId));
         }
-        return Optional.empty();
+        return CheckpointStatsResult.pending();
     }
 
     @Override

@@ -30,6 +30,7 @@ import org.apache.flink.kubernetes.operator.api.status.FlinkDeploymentStatus;
 import org.apache.flink.kubernetes.operator.api.status.Savepoint;
 import org.apache.flink.kubernetes.operator.controller.FlinkResourceContext;
 import org.apache.flink.kubernetes.operator.observer.CheckpointFetchResult;
+import org.apache.flink.kubernetes.operator.observer.CheckpointStatsResult;
 import org.apache.flink.kubernetes.operator.observer.SavepointFetchResult;
 import org.apache.flink.runtime.client.JobStatusMessage;
 import org.apache.flink.runtime.jobmaster.JobResult;
@@ -105,7 +106,7 @@ public interface FlinkService {
 
     CheckpointFetchResult fetchCheckpointInfo(String triggerId, String jobId, Configuration conf);
 
-    Optional<String> fetchCheckpointPath(String jobId, Long checkpointId, Configuration conf);
+    CheckpointStatsResult fetchCheckpointStats(String jobId, Long checkpointId, Configuration conf);
 
     Tuple2<
                     Optional<CheckpointHistoryWrapper.CompletedCheckpointInfo>,

@@ -44,6 +44,7 @@ import org.apache.flink.kubernetes.operator.config.FlinkOperatorConfiguration;
 import org.apache.flink.kubernetes.operator.config.KubernetesOperatorConfigOptions;
 import org.apache.flink.kubernetes.operator.exception.RecoveryFailureException;
 import org.apache.flink.kubernetes.operator.observer.CheckpointFetchResult;
+import org.apache.flink.kubernetes.operator.observer.CheckpointStatsResult;
 import org.apache.flink.kubernetes.operator.observer.SavepointFetchResult;
 import org.apache.flink.kubernetes.operator.reconciler.ReconciliationUtils;
 import org.apache.flink.kubernetes.operator.utils.EnvUtils;
@@ -740,7 +741,7 @@ public abstract class AbstractFlinkService implements FlinkService {
     }
 
     @Override
-    public Optional<String> fetchCheckpointPath(
+    public CheckpointStatsResult fetchCheckpointStats(
             String jobId, Long checkpointId, Configuration conf) {
         try (RestClusterClient<String> clusterClient = getClusterClient(conf)) {
             var checkpointStatusHeaders = CheckpointStatisticDetailsHeaders.getInstance();
@@ -756,19 +757,28 @@ public abstract class AbstractFlinkService implements FlinkService {
                     clusterClient.sendRequest(
                             checkpointStatusHeaders, parameters, EmptyRequestBody.getInstance());
 
-            if (response.get() == null) {
+            var stats = response.get();
+            if (stats == null) {
                 throw new IllegalStateException("Checkpoint ID %d for job %s does not exist!");
-            }
-            if (response.get() instanceof CheckpointStatistics.CompletedCheckpointStatistics) {
-                return Optional.of(
-                                (CheckpointStatistics.CompletedCheckpointStatistics) response.get())
-                        .map(CheckpointStatistics.CompletedCheckpointStatistics::getExternalPath);
+            } else if (stats instanceof CheckpointStatistics.CompletedCheckpointStatistics) {
+                return CheckpointStatsResult.completed(
+                        ((CheckpointStatistics.CompletedCheckpointStatistics) stats)
+                                .getExternalPath());
+            } else if (stats instanceof CheckpointStatistics.FailedCheckpointStatistics) {
+                return CheckpointStatsResult.error(
+                        ((CheckpointStatistics.FailedCheckpointStatistics) stats)
+                                .getFailureMessage());
+            } else if (stats instanceof CheckpointStatistics.PendingCheckpointStatistics) {
+                return CheckpointStatsResult.pending();
             } else {
-                return Optional.empty();
+                throw new IllegalArgumentException(
+                        String.format(
+                                "Unknown checkpoint statistics result class: %s",
+                                stats.getClass().getSimpleName()));
             }
         } catch (Exception e) {
             LOG.error("Exception while fetching checkpoint statistics", e);
-            return Optional.empty();
+            return CheckpointStatsResult.pending();
         }
     }
 

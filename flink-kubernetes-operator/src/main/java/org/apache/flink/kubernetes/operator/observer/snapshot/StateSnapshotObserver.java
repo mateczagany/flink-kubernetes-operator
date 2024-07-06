@@ -141,23 +141,23 @@ public class StateSnapshotObserver {
             LOG.debug(
                     "Checkpoint {} was successful, querying final checkpoint path...",
                     resourceName);
-            var checkpointStats =
+            var checkpointStatsResult =
                     ctxFlinkDeployment
                             .getFlinkService()
-                            .fetchCheckpointPath(
+                            .fetchCheckpointStats(
                                     jobId,
                                     checkpointInfo.getCheckpointId(),
                                     ctx.getReferencedJobObserveConfig());
 
-            if (checkpointStats.isPresent()) {
-                var checkpointPath = checkpointStats.get();
-                LOG.info("Checkpoint {} successful: {}", resourceName, checkpointPath);
-                snapshotSuccessful(resource, checkpointPath);
-            } else {
-                LOG.error(
-                        "Checkpoint {} was successful, querying final checkpoint path...",
-                        resourceName);
+            if (checkpointStatsResult.isPending()) {
+                return;
+            } else if (checkpointStatsResult.getError() != null) {
+                snapshotFailed(
+                        ctx.getKubernetesClient(), resource, checkpointStatsResult.getError());
             }
+
+            LOG.info("Checkpoint {} successful: {}", resourceName, checkpointStatsResult.getPath());
+            snapshotSuccessful(resource, checkpointStatsResult.getPath());
         }
     }
 
