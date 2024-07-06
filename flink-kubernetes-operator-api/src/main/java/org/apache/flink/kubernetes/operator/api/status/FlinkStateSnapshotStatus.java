@@ -24,9 +24,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import io.fabric8.crd.generator.annotation.PrinterColumn;
 import lombok.AllArgsConstructor;
 import lombok.Data;
-import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
-import lombok.ToString;
 import lombok.experimental.SuperBuilder;
 
 /** Last observed status of the Flink state snapshot. */
@@ -34,8 +32,6 @@ import lombok.experimental.SuperBuilder;
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
-@EqualsAndHashCode
-@ToString
 @SuperBuilder
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class FlinkStateSnapshotStatus implements Diffable<FlinkStateSnapshotStatus> {

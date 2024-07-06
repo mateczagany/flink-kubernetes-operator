@@ -23,9 +23,7 @@ import org.apache.flink.kubernetes.operator.api.diff.Diffable;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.AllArgsConstructor;
 import lombok.Data;
-import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
-import lombok.ToString;
 import lombok.experimental.SuperBuilder;
 
 /** Spec that describes a FlinkStateSnapshot. */
@@ -33,8 +31,6 @@ import lombok.experimental.SuperBuilder;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-@EqualsAndHashCode
-@ToString
 @SuperBuilder
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class FlinkStateSnapshotSpec implements Diffable<FlinkStateSnapshotSpec> {

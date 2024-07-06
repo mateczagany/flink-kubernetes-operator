@@ -60,13 +60,11 @@ public class StateSnapshotObserver {
         var resourceName = resource.getMetadata().getName();
         var triggerId = resource.getStatus().getTriggerId();
 
-        LOG.info("Observing savepoint state for resource {}...", resourceName);
-
         if (StringUtils.isEmpty(triggerId)) {
-            LOG.debug("Trigger ID is not set for savepoint {} yet.", resourceName);
             return;
         }
 
+        LOG.debug("Observing savepoint state for resource {}...", resourceName);
         var secondaryResource =
                 ctx.getSecondaryResource()
                         .orElseThrow(
@@ -114,7 +112,6 @@ public class StateSnapshotObserver {
                     resourceName,
                     resource.getStatus().getTriggerId());
         } else if (savepointInfo.getError() != null) {
-            LOG.error("Savepoint {} failed: {}", resourceName, savepointInfo.getError());
             snapshotFailed(ctx.getKubernetesClient(), resource, savepointInfo.getError());
         } else {
             LOG.info("Savepoint {} successful: {}", resourceName, savepointInfo.getLocation());
@@ -139,10 +136,9 @@ public class StateSnapshotObserver {
         }
 
         if (checkpointInfo.getError() != null) {
-            LOG.error("Checkpoint {} failed: {}", resourceName, checkpointInfo.getError());
             snapshotFailed(ctx.getKubernetesClient(), resource, checkpointInfo.getError());
         } else {
-            LOG.info(
+            LOG.debug(
                     "Checkpoint {} was successful, querying final checkpoint path...",
                     resourceName);
             var checkpointStats =

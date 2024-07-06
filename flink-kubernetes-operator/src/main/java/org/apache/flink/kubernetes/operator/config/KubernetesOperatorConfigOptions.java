@@ -310,14 +310,6 @@ public class KubernetesOperatorConfigOptions {
                                     + "even if this value is true.");
 
     @Documentation.Section(SECTION_DYNAMIC)
-    public static final ConfigOption<Boolean> PERIODIC_SAVEPOINT_DISPOSE_ON_DELETE =
-            operatorConfig("periodic.savepoint.dispose-on-delete")
-                    .booleanType()
-                    .defaultValue(false)
-                    .withDescription(
-                            "Savepoint data created by periodic savepoints as FlinkStateSnapshot resources will be disposed of automatically when the Kubernetes resource gets deleted.");
-
-    @Documentation.Section(SECTION_DYNAMIC)
     public static final ConfigOption<String> PERIODIC_SAVEPOINT_INTERVAL =
             operatorConfig("periodic.savepoint.interval")
                     .stringType()
@@ -431,14 +423,6 @@ public class KubernetesOperatorConfigOptions {
                             "Max number of reconcile loops triggered within the rate limiter refresh period for each resource. Setting the limit <= 0 disables the limiter.");
 
     @Documentation.Section(SECTION_DYNAMIC)
-    public static final ConfigOption<Boolean> OPERATOR_JOB_UPGRADE_SAVEPOINT_DISPOSE_ON_DELETE =
-            operatorConfig("job.upgrade.savepoint.dispose-on-delete")
-                    .booleanType()
-                    .defaultValue(false)
-                    .withDescription(
-                            "Savepoint data created by upgrade savepoints as FlinkStateSnapshot resources will be disposed of automatically when the Kubernetes resource gets deleted.");
-
-    @Documentation.Section(SECTION_DYNAMIC)
     public static final ConfigOption<Boolean> OPERATOR_JOB_UPGRADE_LAST_STATE_FALLBACK_ENABLED =
             operatorConfig("job.upgrade.last-state-fallback.enabled")
                     .booleanType()
@@ -453,6 +437,14 @@ public class KubernetesOperatorConfigOptions {
                     .noDefaultValue()
                     .withDescription(
                             "Max allowed checkpoint age for initiating last-state upgrades on running jobs. If a checkpoint is not available within the desired age (and nothing in progress) a savepoint will be triggered.");
+
+    @Documentation.Section(SECTION_DYNAMIC)
+    public static final ConfigOption<Boolean> OPERATOR_JOB_SAVEPOINT_DISPOSE_ON_DELETE =
+            operatorConfig("savepoint.dispose-on-delete")
+                    .booleanType()
+                    .defaultValue(false)
+                    .withDescription(
+                            "Savepoint data for FlinkStateSnapshot resources created by the operator during upgrades and periodic savepoints will be disposed of automatically when the generated Kubernetes resource is deleted.");
 
     @Documentation.Section(SECTION_DYNAMIC)
     public static final ConfigOption<SavepointFormatType> OPERATOR_SAVEPOINT_FORMAT_TYPE =

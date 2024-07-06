@@ -258,7 +258,7 @@ public class ApplicationReconciler
                                 SavepointFormatType.valueOf(savepointFormatType.name()),
                                 conf.get(
                                         KubernetesOperatorConfigOptions
-                                                .OPERATOR_JOB_UPGRADE_SAVEPOINT_DISPOSE_ON_DELETE));
+                                                .OPERATOR_JOB_SAVEPOINT_DISPOSE_ON_DELETE));
                     } else {
                         Savepoint sp =
                                 Savepoint.of(

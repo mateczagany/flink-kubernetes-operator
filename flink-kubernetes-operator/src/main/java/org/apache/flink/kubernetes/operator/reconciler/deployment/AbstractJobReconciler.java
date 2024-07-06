@@ -405,7 +405,7 @@ public abstract class AbstractJobReconciler<
                             SavepointFormatType.valueOf(savepointFormatType.name()),
                             conf.getBoolean(
                                     KubernetesOperatorConfigOptions
-                                            .PERIODIC_SAVEPOINT_DISPOSE_ON_DELETE));
+                                            .OPERATOR_JOB_SAVEPOINT_DISPOSE_ON_DELETE));
                 } else {
                     var triggerId =
                             ctx.getFlinkService()
