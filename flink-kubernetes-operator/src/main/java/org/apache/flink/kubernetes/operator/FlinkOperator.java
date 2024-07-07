@@ -228,7 +228,7 @@ public class FlinkOperator {
         var statusRecorder =
                 StatusRecorder.createForFlinkStateSnapshot(client, metricManager, listeners);
         var eventRecorder = EventRecorder.create(client, listeners);
-        var reconciler = new StateSnapshotReconciler(ctxFactory);
+        var reconciler = new StateSnapshotReconciler(ctxFactory, eventRecorder);
         var observer = new StateSnapshotObserver(ctxFactory, eventRecorder);
         var controller =
                 new FlinkStateSnapshotController(

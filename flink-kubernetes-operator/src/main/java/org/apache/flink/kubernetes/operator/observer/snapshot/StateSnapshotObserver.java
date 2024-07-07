@@ -25,9 +25,9 @@ import org.apache.flink.kubernetes.operator.controller.FlinkResourceContext;
 import org.apache.flink.kubernetes.operator.controller.FlinkStateSnapshotContext;
 import org.apache.flink.kubernetes.operator.observer.CheckpointFetchResult;
 import org.apache.flink.kubernetes.operator.observer.SavepointFetchResult;
-import org.apache.flink.kubernetes.operator.reconciler.ReconciliationUtils;
 import org.apache.flink.kubernetes.operator.service.FlinkResourceContextFactory;
 import org.apache.flink.kubernetes.operator.utils.EventRecorder;
+import org.apache.flink.kubernetes.operator.utils.FlinkStateSnapshotUtils;
 
 import io.fabric8.kubernetes.client.KubernetesClient;
 import lombok.RequiredArgsConstructor;
@@ -51,11 +51,11 @@ public class StateSnapshotObserver {
         var savepointState = resource.getStatus().getState();
 
         if (FlinkStateSnapshotState.IN_PROGRESS.equals(savepointState)) {
-            observeSavepointState(ctx);
+            observeSnapshotState(ctx);
         }
     }
 
-    private void observeSavepointState(FlinkStateSnapshotContext ctx) {
+    private void observeSnapshotState(FlinkStateSnapshotContext ctx) {
         var resource = ctx.getResource();
         var resourceName = resource.getMetadata().getName();
         var triggerId = resource.getStatus().getTriggerId();
@@ -64,27 +64,17 @@ public class StateSnapshotObserver {
             return;
         }
 
-        LOG.debug("Observing savepoint state for resource {}...", resourceName);
-        var secondaryResource =
-                ctx.getSecondaryResource()
-                        .orElseThrow(
-                                () ->
-                                        new RuntimeException(
-                                                String.format(
-                                                        "Secondary resource %s for savepoint %s was not found",
-                                                        resource.getSpec().getJobReference(),
-                                                        resourceName)));
-        var jobId = secondaryResource.getStatus().getJobStatus().getJobId();
+        LOG.debug("Observing snapshot state for resource {}...", resourceName);
 
+        if (FlinkStateSnapshotUtils.abandonSnapshotIfJobNotRunning(ctx, eventRecorder)) {
+            return;
+        }
+
+        var jobId = ctx.getSecondaryResource().orElseThrow().getStatus().getJobStatus().getJobId();
         var ctxFlinkDeployment =
                 ctxFactory.getResourceContext(
                         ctx.getReferencedJobFlinkDeployment(), ctx.getJosdkContext());
         var observeConfig = ctx.getReferencedJobObserveConfig();
-
-        if (!ReconciliationUtils.isJobRunning(secondaryResource.getStatus())) {
-            snapshotAbandoned(resource);
-            return;
-        }
 
         if (resource.getSpec().isSavepoint()) {
             var savepointInfo =
@@ -184,13 +174,6 @@ public class StateSnapshotObserver {
     private void snapshotSuccessful(FlinkStateSnapshot snapshot, String location) {
         snapshot.getStatus().setState(FlinkStateSnapshotState.COMPLETED);
         snapshot.getStatus().setPath(location);
-        snapshot.getStatus().setError(null);
-        snapshot.getStatus().setResultTimestamp(DateTimeUtils.kubernetes(Instant.now()));
-    }
-
-    private void snapshotAbandoned(FlinkStateSnapshot snapshot) {
-        snapshot.getStatus().setState(FlinkStateSnapshotState.ABANDONED);
-        snapshot.getStatus().setPath(null);
         snapshot.getStatus().setError(null);
         snapshot.getStatus().setResultTimestamp(DateTimeUtils.kubernetes(Instant.now()));
     }

@@ -29,6 +29,8 @@ import org.apache.flink.kubernetes.operator.controller.FlinkResourceContext;
 import org.apache.flink.kubernetes.operator.controller.FlinkStateSnapshotContext;
 import org.apache.flink.kubernetes.operator.reconciler.ReconciliationUtils;
 import org.apache.flink.kubernetes.operator.service.FlinkResourceContextFactory;
+import org.apache.flink.kubernetes.operator.utils.EventRecorder;
+import org.apache.flink.kubernetes.operator.utils.FlinkStateSnapshotUtils;
 import org.apache.flink.util.Preconditions;
 
 import io.javaoperatorsdk.operator.api.reconciler.DeleteControl;
@@ -47,6 +49,7 @@ public class StateSnapshotReconciler {
     private static final Logger LOG = LoggerFactory.getLogger(StateSnapshotReconciler.class);
 
     private final FlinkResourceContextFactory ctxFactory;
+    private final EventRecorder eventRecorder;
 
     public void reconcile(FlinkStateSnapshotContext ctx) throws Exception {
         var source = ctx.getResource().getSpec().getJobReference();
@@ -70,23 +73,11 @@ public class StateSnapshotReconciler {
             return;
         }
 
-        var secondaryResource =
-                ctx.getSecondaryResource()
-                        .orElseThrow(
-                                () ->
-                                        new RuntimeException(
-                                                String.format(
-                                                        "Secondary resource %s not found",
-                                                        source)));
-        if (!ReconciliationUtils.isJobRunning(secondaryResource.getStatus())) {
-            LOG.warn(
-                    "Target job {} for savepoint {} is not running, cannot trigger snapshot.",
-                    secondaryResource.getMetadata().getName(),
-                    resource.getMetadata().getName());
+        if (FlinkStateSnapshotUtils.abandonSnapshotIfJobNotRunning(ctx, eventRecorder)) {
             return;
         }
 
-        var jobId = secondaryResource.getStatus().getJobStatus().getJobId();
+        var jobId = ctx.getSecondaryResource().orElseThrow().getStatus().getJobStatus().getJobId();
         var ctxFlinkDeployment =
                 ctxFactory.getResourceContext(
                         ctx.getReferencedJobFlinkDeployment(), ctx.getJosdkContext());

@@ -17,6 +17,7 @@
 
 package org.apache.flink.kubernetes.operator.utils;
 
+import org.apache.flink.autoscaler.utils.DateTimeUtils;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.kubernetes.operator.api.AbstractFlinkResource;
 import org.apache.flink.kubernetes.operator.api.CrdConstants;
@@ -31,6 +32,8 @@ import org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotState;
 import org.apache.flink.kubernetes.operator.api.status.SavepointFormatType;
 import org.apache.flink.kubernetes.operator.api.status.SnapshotTriggerType;
 import org.apache.flink.kubernetes.operator.config.FlinkOperatorConfiguration;
+import org.apache.flink.kubernetes.operator.controller.FlinkStateSnapshotContext;
+import org.apache.flink.kubernetes.operator.reconciler.ReconciliationUtils;
 import org.apache.flink.kubernetes.operator.reconciler.SnapshotType;
 
 import io.fabric8.kubernetes.api.model.ObjectMeta;
@@ -224,5 +227,64 @@ public class FlinkStateSnapshotUtils {
                 referencedResource.getMetadata().getName(),
                 timeStr,
                 UUID.randomUUID());
+    }
+
+    /**
+     * Abandons a FlinkStateSnapshot resource if the referenced job is not found or not running.
+     *
+     * @param ctx context
+     * @param eventRecorder event recorder to trigger Kubernetes event
+     * @return true if the resource was abandoned
+     */
+    public static boolean abandonSnapshotIfJobNotRunning(
+            FlinkStateSnapshotContext ctx, EventRecorder eventRecorder) {
+        var resource = ctx.getResource();
+
+        var secondaryResourceOpt = ctx.getSecondaryResource();
+        if (secondaryResourceOpt.isEmpty()) {
+            var message =
+                    String.format(
+                            "Secondary resource %s for savepoint %s was not found",
+                            resource.getSpec().getJobReference(), resource.getMetadata().getName());
+            abandonSnapshot(ctx, eventRecorder, message);
+            return true;
+        }
+
+        var secondaryResource = secondaryResourceOpt.get();
+        if (!ReconciliationUtils.isJobRunning(secondaryResource.getStatus())) {
+            var message =
+                    String.format(
+                            "Secondary resource %s for savepoint %s is not running",
+                            resource.getSpec().getJobReference(), resource.getMetadata().getName());
+            abandonSnapshot(ctx, eventRecorder, message);
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Sets the status fields of the snapshot to an abandoned state and triggers a Kubernetes event.
+     *
+     * @param ctx context
+     * @param eventRecorder event recorder
+     * @param message message of the generated event
+     */
+    private static void abandonSnapshot(
+            FlinkStateSnapshotContext ctx, EventRecorder eventRecorder, String message) {
+        var resource = ctx.getResource();
+
+        eventRecorder.triggerSnapshotEvent(
+                ctx.getResource(),
+                EventRecorder.Type.Warning,
+                EventRecorder.Reason.SnapshotAbandoned,
+                EventRecorder.Component.Snapshot,
+                message,
+                ctx.getKubernetesClient());
+
+        resource.getStatus().setState(FlinkStateSnapshotState.ABANDONED);
+        resource.getStatus().setPath(null);
+        resource.getStatus().setError(null);
+        resource.getStatus().setResultTimestamp(DateTimeUtils.kubernetes(Instant.now()));
     }
 }

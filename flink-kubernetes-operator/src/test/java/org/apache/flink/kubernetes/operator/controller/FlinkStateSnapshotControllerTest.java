@@ -95,7 +95,7 @@ public class FlinkStateSnapshotControllerTest {
                 new FlinkStateSnapshotController(
                         ValidatorUtils.discoverValidators(configManager),
                         ctxFactory,
-                        new StateSnapshotReconciler(ctxFactory),
+                        new StateSnapshotReconciler(ctxFactory, eventRecorder),
                         new StateSnapshotObserver(ctxFactory, eventRecorder),
                         eventRecorder,
                         statusRecorder);
@@ -446,6 +446,46 @@ public class FlinkStateSnapshotControllerTest {
     }
 
     @Test
+    public void testReconcileJobNotFound() {
+        var deployment = createDeployment();
+        var snapshot = createSavepoint(deployment);
+
+        // First reconcile will trigger the snapshot.
+        controller.reconcile(snapshot, TestUtils.createSnapshotContext(client, deployment));
+
+        var status = snapshot.getStatus();
+        assertThat(status.getState()).isEqualTo(FlinkStateSnapshotState.IN_PROGRESS);
+        assertThat(status.getPath()).isNull();
+        assertThat(status.getError()).isNull();
+
+        // Second reconcile will abandon the snapshot, as secondary resource won't be found in
+        // observe phase.
+        controller.reconcile(snapshot, TestUtils.createSnapshotContext(client, null));
+
+        status = snapshot.getStatus();
+        assertThat(status.getState()).isEqualTo(FlinkStateSnapshotState.ABANDONED);
+        assertThat(status.getPath()).isNull();
+        assertThat(status.getError()).isNull();
+
+        // observe phase triggers event for snapshot abandoned, then validation will also trigger an
+        // event.
+        assertThat(flinkStateSnapshotEventCollector.events).hasSize(2);
+        assertThat(flinkStateSnapshotEventCollector.events.get(0))
+                .satisfies(
+                        event -> {
+                            assertThat(event.getReason())
+                                    .isEqualTo(EventRecorder.Reason.SnapshotAbandoned.name());
+                            assertThat(event.getType())
+                                    .isEqualTo(EventRecorder.Type.Warning.name());
+                            assertThat(event.getMessage())
+                                    .isEqualTo(
+                                            String.format(
+                                                    "Secondary resource FlinkDeployment/%s for savepoint snapshot-test was not found",
+                                                    deployment.getMetadata().getName()));
+                        });
+    }
+
+    @Test
     public void testReconcileJobNotRunning() {
         var deployment = createDeployment();
         deployment.getStatus().getJobStatus().setState("CANCELED");
@@ -455,10 +495,25 @@ public class FlinkStateSnapshotControllerTest {
         controller.reconcile(snapshot, context);
 
         var status = snapshot.getStatus();
-        assertThat(status.getState()).isEqualTo(FlinkStateSnapshotState.TRIGGER_PENDING);
+        assertThat(status.getState()).isEqualTo(FlinkStateSnapshotState.ABANDONED);
         assertThat(status.getPath()).isNull();
         assertThat(status.getError()).isNull();
         assertThat(status.getTriggerId()).isNull();
+
+        assertThat(flinkStateSnapshotEventCollector.events)
+                .hasSize(1)
+                .allSatisfy(
+                        event -> {
+                            assertThat(event.getReason())
+                                    .isEqualTo(EventRecorder.Reason.SnapshotAbandoned.name());
+                            assertThat(event.getType())
+                                    .isEqualTo(EventRecorder.Type.Warning.name());
+                            assertThat(event.getMessage())
+                                    .isEqualTo(
+                                            String.format(
+                                                    "Secondary resource FlinkDeployment/%s for savepoint snapshot-test is not running",
+                                                    deployment.getMetadata().getName()));
+                        });
     }
 
     private FlinkStateSnapshot createSavepoint(FlinkDeployment deployment) {

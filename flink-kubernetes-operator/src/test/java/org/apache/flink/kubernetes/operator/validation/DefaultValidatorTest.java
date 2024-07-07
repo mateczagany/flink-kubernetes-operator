@@ -1072,7 +1072,7 @@ public class DefaultValidatorTest {
                 snapshot,
                 Optional.empty(),
                 String.format(
-                        "Target for snapshot (JobReference(kind=FLINK_DEPLOYMENT, name=%s)) in namespace test was not found",
+                        "Target for snapshot (FlinkDeployment/%s) in namespace test was not found",
                         refName));
     }
 

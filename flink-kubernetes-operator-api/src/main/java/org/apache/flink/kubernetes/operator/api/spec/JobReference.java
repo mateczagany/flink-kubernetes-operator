@@ -19,6 +19,7 @@ package org.apache.flink.kubernetes.operator.api.spec;
 
 import org.apache.flink.annotation.Experimental;
 import org.apache.flink.kubernetes.operator.api.AbstractFlinkResource;
+import org.apache.flink.kubernetes.operator.api.CrdConstants;
 import org.apache.flink.kubernetes.operator.api.FlinkDeployment;
 import org.apache.flink.kubernetes.operator.api.FlinkSessionJob;
 
@@ -54,5 +55,15 @@ public class JobReference {
         }
 
         return result;
+    }
+
+    public String toString() {
+        String kindString = kind.name();
+        if (kind == JobKind.FLINK_DEPLOYMENT) {
+            kindString = CrdConstants.KIND_FLINK_DEPLOYMENT;
+        } else if (kind == JobKind.FLINK_SESSION_JOB) {
+            kindString = CrdConstants.KIND_SESSION_JOB;
+        }
+        return String.format("%s/%s", kindString, name);
     }
 }
