@@ -32,6 +32,8 @@ import org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotState;
 import org.apache.flink.kubernetes.operator.api.status.SavepointFormatType;
 import org.apache.flink.kubernetes.operator.api.status.SnapshotTriggerType;
 import org.apache.flink.kubernetes.operator.config.FlinkOperatorConfiguration;
+import org.apache.flink.kubernetes.operator.config.KubernetesOperatorConfigOptions;
+import org.apache.flink.kubernetes.operator.controller.FlinkResourceContext;
 import org.apache.flink.kubernetes.operator.controller.FlinkStateSnapshotContext;
 import org.apache.flink.kubernetes.operator.reconciler.ReconciliationUtils;
 import org.apache.flink.kubernetes.operator.reconciler.SnapshotType;
@@ -39,6 +41,8 @@ import org.apache.flink.kubernetes.operator.reconciler.SnapshotType;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import org.apache.commons.lang3.StringUtils;
+
+import javax.annotation.Nullable;
 
 import java.time.Instant;
 import java.time.ZoneId;
@@ -57,6 +61,14 @@ public class FlinkStateSnapshotUtils {
     private static final DateTimeFormatter RESOURCE_NAME_DATE_TIME_FORMATTER =
             DateTimeFormatter.ofPattern("yyyy-MM-dd-HH-mm");
 
+    /**
+     * From a snapshot reference, return its snapshot path. If a {@link FlinkStateSnapshot} is
+     * referenced, it will be retrieved from Kubernetes.
+     *
+     * @param kubernetesClient kubernetes client
+     * @param snapshotRef snapshot reference
+     * @return found savepoint path
+     */
     public static String getAndValidateFlinkStateSnapshotPath(
             KubernetesClient kubernetesClient, FlinkStateSnapshotReference snapshotRef) {
         if (!StringUtils.isBlank(snapshotRef.getPath())) {
@@ -89,6 +101,15 @@ public class FlinkStateSnapshotUtils {
                     String.format(
                             "Cannot find snapshot %s in namespace %s.",
                             snapshotRef.getNamespace(), snapshotRef.getName()));
+        }
+
+        // We can return the savepoint path if it's marked as completed without waiting for the
+        // reconciler to update its status.
+        if (result.getSpec().isSavepoint() && result.getSpec().getSavepoint().getAlreadyExists()) {
+            var path = result.getSpec().getSavepoint().getPath();
+            if (!StringUtils.isBlank(path)) {
+                return path;
+            }
         }
 
         if (FlinkStateSnapshotState.COMPLETED != result.getStatus().getState()) {
@@ -125,18 +146,30 @@ public class FlinkStateSnapshotUtils {
         return kubernetesClient.resource(snapshot).create();
     }
 
-    public static FlinkStateSnapshot createUpgradeSavepointResource(
+    /**
+     * Creates a checkpoint {@link FlinkStateSnapshot} resource on the Kubernetes cluster.
+     *
+     * @param kubernetesClient kubernetes client
+     * @param resource Flink resource associated
+     * @param savepointPath savepoint path if any
+     * @param triggerType trigger type
+     * @param savepointFormatType format type
+     * @param disposeOnDelete should dispose of data on deletion
+     * @return created snapshot
+     */
+    public static FlinkStateSnapshot createSavepointResource(
             KubernetesClient kubernetesClient,
             AbstractFlinkResource<?, ?> resource,
-            String savepointDirectory,
+            @Nullable String savepointPath,
+            SnapshotTriggerType triggerType,
             SavepointFormatType savepointFormatType,
             boolean disposeOnDelete) {
         var savepointSpec =
                 SavepointSpec.builder()
-                        .path(savepointDirectory)
+                        .path(savepointPath)
                         .formatType(savepointFormatType)
                         .disposeOnDelete(disposeOnDelete)
-                        .alreadyExists(true)
+                        .alreadyExists(triggerType == SnapshotTriggerType.UPGRADE)
                         .build();
 
         var snapshotSpec =
@@ -145,41 +178,24 @@ public class FlinkStateSnapshotUtils {
                         .savepoint(savepointSpec)
                         .build();
 
-        var resourceName =
-                getFlinkStateSnapshotName(SAVEPOINT, SnapshotTriggerType.UPGRADE, resource);
-        return createFlinkStateSnapshot(
-                kubernetesClient, resourceName, snapshotSpec, SnapshotTriggerType.UPGRADE);
+        var resourceName = getFlinkStateSnapshotName(SAVEPOINT, triggerType, resource);
+        return createFlinkStateSnapshot(kubernetesClient, resourceName, snapshotSpec, triggerType);
     }
 
-    public static FlinkStateSnapshot createPeriodicSavepointResource(
+    /**
+     * Creates a checkpoint {@link FlinkStateSnapshot} resource on the Kubernetes cluster.
+     *
+     * @param kubernetesClient kubernetes client
+     * @param resource Flink resource associated
+     * @param checkpointType type of checkpoint
+     * @param triggerType trigger type
+     * @return created snapshot
+     */
+    public static FlinkStateSnapshot createCheckpointResource(
             KubernetesClient kubernetesClient,
             AbstractFlinkResource<?, ?> resource,
-            String savepointDirectory,
-            SavepointFormatType savepointFormatType,
-            boolean disposeOnDelete) {
-        var savepointSpec =
-                SavepointSpec.builder()
-                        .path(savepointDirectory)
-                        .formatType(savepointFormatType)
-                        .disposeOnDelete(disposeOnDelete)
-                        .build();
-
-        var snapshotSpec =
-                FlinkStateSnapshotSpec.builder()
-                        .jobReference(JobReference.fromFlinkResource(resource))
-                        .savepoint(savepointSpec)
-                        .build();
-
-        var resourceName =
-                getFlinkStateSnapshotName(SAVEPOINT, SnapshotTriggerType.PERIODIC, resource);
-        return createFlinkStateSnapshot(
-                kubernetesClient, resourceName, snapshotSpec, SnapshotTriggerType.PERIODIC);
-    }
-
-    public static FlinkStateSnapshot createPeriodicCheckpointResource(
-            KubernetesClient kubernetesClient,
-            AbstractFlinkResource<?, ?> resource,
-            CheckpointType checkpointType) {
+            CheckpointType checkpointType,
+            SnapshotTriggerType triggerType) {
         var checkpointSpec = CheckpointSpec.builder().checkpointType(checkpointType).build();
 
         var snapshotSpec =
@@ -188,10 +204,8 @@ public class FlinkStateSnapshotUtils {
                         .checkpoint(checkpointSpec)
                         .build();
 
-        var resourceName =
-                getFlinkStateSnapshotName(CHECKPOINT, SnapshotTriggerType.PERIODIC, resource);
-        return createFlinkStateSnapshot(
-                kubernetesClient, resourceName, snapshotSpec, SnapshotTriggerType.PERIODIC);
+        var resourceName = getFlinkStateSnapshotName(CHECKPOINT, triggerType, resource);
+        return createFlinkStateSnapshot(kubernetesClient, resourceName, snapshotSpec, triggerType);
     }
 
     public static <CR extends AbstractFlinkResource<?, ?>>
@@ -227,6 +241,39 @@ public class FlinkStateSnapshotUtils {
                 referencedResource.getMetadata().getName(),
                 timeStr,
                 UUID.randomUUID());
+    }
+
+    /**
+     * For an upgrade savepoint, create a {@link FlinkStateSnapshot} on the Kubernetes cluster and
+     * return its reference if snapshot resources are enabled. In other case return a reference
+     * containing only the path.
+     *
+     * @param ctx resource context
+     * @param savepointFormatType savepoint format type
+     * @param savepointPath path of savepoint
+     * @return reference for snapshot
+     */
+    public static FlinkStateSnapshotReference createReferenceForUpgradeSavepoint(
+            FlinkResourceContext<?> ctx,
+            SavepointFormatType savepointFormatType,
+            String savepointPath) {
+        var conf = ctx.getObserveConfig() != null ? ctx.getObserveConfig() : new Configuration();
+
+        if (shouldCreateSnapshotResource(ctx.getOperatorConfig(), conf)) {
+            var snapshot =
+                    createSavepointResource(
+                            ctx.getKubernetesClient(),
+                            ctx.getResource(),
+                            savepointPath,
+                            SnapshotTriggerType.UPGRADE,
+                            savepointFormatType,
+                            conf.get(
+                                    KubernetesOperatorConfigOptions
+                                            .OPERATOR_JOB_SAVEPOINT_DISPOSE_ON_DELETE));
+            return FlinkStateSnapshotReference.fromResource(snapshot);
+        } else {
+            return FlinkStateSnapshotReference.fromPath(savepointPath);
+        }
     }
 
     /**

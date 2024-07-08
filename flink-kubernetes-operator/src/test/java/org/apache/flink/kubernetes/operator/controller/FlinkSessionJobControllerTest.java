@@ -23,6 +23,7 @@ import org.apache.flink.kubernetes.operator.TestUtils;
 import org.apache.flink.kubernetes.operator.TestingFlinkService;
 import org.apache.flink.kubernetes.operator.api.FlinkDeployment;
 import org.apache.flink.kubernetes.operator.api.FlinkSessionJob;
+import org.apache.flink.kubernetes.operator.api.spec.FlinkStateSnapshotReference;
 import org.apache.flink.kubernetes.operator.api.spec.FlinkVersion;
 import org.apache.flink.kubernetes.operator.api.spec.JobState;
 import org.apache.flink.kubernetes.operator.api.spec.UpgradeMode;
@@ -192,6 +193,9 @@ class FlinkSessionJobControllerTest {
         var jobs = flinkService.listJobs();
         assertEquals(1, jobs.size());
         assertEquals("s0", jobs.get(0).f0);
+        assertEquals(
+                FlinkStateSnapshotReference.fromPath("s0"),
+                sessionJob.getStatus().getJobStatus().getUpgradeSnapshotReference());
 
         var previousJobs = new ArrayList<>(jobs);
         sessionJob.getSpec().getJob().setInitialSavepointPath("s1");
@@ -199,18 +203,16 @@ class FlinkSessionJobControllerTest {
         // Send in a no-op change
         testController.reconcile(sessionJob, context);
         assertEquals(previousJobs, new ArrayList<>(flinkService.listJobs()));
+        assertEquals(
+                FlinkStateSnapshotReference.fromPath("s0"),
+                sessionJob.getStatus().getJobStatus().getUpgradeSnapshotReference());
 
         // Upgrade job
-        assertTrue(
-                sessionJob
-                        .getStatus()
-                        .getJobStatus()
-                        .getSavepointInfo()
-                        .getSavepointHistory()
-                        .isEmpty());
-
         sessionJob.getSpec().getJob().setParallelism(100);
         updateControl = testController.reconcile(sessionJob, context);
+        assertEquals(
+                FlinkStateSnapshotReference.fromPath("savepoint_0"),
+                sessionJob.getStatus().getJobStatus().getUpgradeSnapshotReference());
 
         assertEquals(0L, updateControl.getScheduleDelay().get());
         assertEquals(
@@ -221,14 +223,6 @@ class FlinkSessionJobControllerTest {
                         .deserializeLastReconciledSpec()
                         .getJob()
                         .getState());
-        assertEquals(
-                1,
-                sessionJob
-                        .getStatus()
-                        .getJobStatus()
-                        .getSavepointInfo()
-                        .getSavepointHistory()
-                        .size());
 
         flinkService.clearJobsInTerminalState();
 
@@ -238,13 +232,8 @@ class FlinkSessionJobControllerTest {
         assertEquals("savepoint_0", jobs.get(0).f0);
         testController.reconcile(sessionJob, context);
         assertEquals(
-                1,
-                sessionJob
-                        .getStatus()
-                        .getJobStatus()
-                        .getSavepointInfo()
-                        .getSavepointHistory()
-                        .size());
+                FlinkStateSnapshotReference.fromPath("savepoint_0"),
+                sessionJob.getStatus().getJobStatus().getUpgradeSnapshotReference());
 
         // Suspend job
         sessionJob.getSpec().getJob().setState(JobState.SUSPENDED);
@@ -257,6 +246,9 @@ class FlinkSessionJobControllerTest {
         jobs = flinkService.listJobs();
         assertEquals(1, jobs.size());
         assertEquals("savepoint_1", jobs.get(0).f0);
+        assertEquals(
+                FlinkStateSnapshotReference.fromPath("savepoint_1"),
+                sessionJob.getStatus().getJobStatus().getUpgradeSnapshotReference());
 
         testController.reconcile(sessionJob, context);
         testController.cleanup(sessionJob, context);

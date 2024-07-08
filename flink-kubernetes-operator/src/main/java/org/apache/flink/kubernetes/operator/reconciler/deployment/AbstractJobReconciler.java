@@ -25,6 +25,7 @@ import org.apache.flink.configuration.Configuration;
 import org.apache.flink.kubernetes.operator.api.AbstractFlinkResource;
 import org.apache.flink.kubernetes.operator.api.diff.DiffType;
 import org.apache.flink.kubernetes.operator.api.spec.AbstractFlinkSpec;
+import org.apache.flink.kubernetes.operator.api.spec.FlinkStateSnapshotReference;
 import org.apache.flink.kubernetes.operator.api.spec.JobState;
 import org.apache.flink.kubernetes.operator.api.spec.UpgradeMode;
 import org.apache.flink.kubernetes.operator.api.status.CommonStatus;
@@ -51,13 +52,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
-import java.util.Comparator;
 import java.util.Optional;
 import java.util.function.Predicate;
 
 import static org.apache.flink.kubernetes.operator.config.KubernetesOperatorConfigOptions.OPERATOR_JOB_RESTART_FAILED;
 import static org.apache.flink.kubernetes.operator.config.KubernetesOperatorConfigOptions.OPERATOR_JOB_UPGRADE_LAST_STATE_CHECKPOINT_MAX_AGE;
-import static org.apache.flink.kubernetes.operator.config.KubernetesOperatorConfigOptions.SNAPSHOT_RESOURCE_ENABLED;
+import static org.apache.flink.kubernetes.operator.reconciler.SnapshotType.CHECKPOINT;
+import static org.apache.flink.kubernetes.operator.reconciler.SnapshotType.SAVEPOINT;
 
 /**
  * Reconciler responsible for handling the job lifecycle according to the desired and current
@@ -272,38 +273,6 @@ public abstract class AbstractJobReconciler<
         }
     }
 
-    /**
-     * Retrieves the latest finished FlinkStateSnapshot for this resource from Kubernetes. This will
-     * also return resources that do not have COMPLETED status, but alreadyExists is set in the
-     * spec.
-     *
-     * @param ctx Flink resource context
-     * @return Optional path if found any resources
-     */
-    private Optional<String> getLatestSavepointPathFromFlinkStateSnapshots(
-            FlinkResourceContext<CR> ctx) {
-        var snapshots =
-                FlinkStateSnapshotUtils.getFlinkStateSnapshotsForResource(
-                        ctx.getKubernetesClient(), ctx.getResource());
-        return snapshots.stream()
-                .filter(s -> s.getSpec().isSavepoint())
-                .filter(
-                        s ->
-                                s.getStatus().getPath() != null
-                                        || (s.getSpec().getSavepoint().getAlreadyExists())
-                                                && s.getSpec().getSavepoint().getPath() != null)
-                .max(
-                        Comparator.comparing(
-                                s ->
-                                        Instant.parse(s.getMetadata().getCreationTimestamp())
-                                                .getEpochSecond()))
-                .map(
-                        s ->
-                                s.getStatus().getPath() != null
-                                        ? s.getStatus().getPath()
-                                        : s.getSpec().getSavepoint().getPath());
-    }
-
     protected void restoreJob(
             FlinkResourceContext<CR> ctx,
             SPEC spec,
@@ -313,19 +282,17 @@ public abstract class AbstractJobReconciler<
         Optional<String> savepointOpt = Optional.empty();
 
         if (spec.getJob().getUpgradeMode() == UpgradeMode.SAVEPOINT) {
-            if (FlinkStateSnapshotUtils.shouldCreateSnapshotResource(
-                    ctx.getOperatorConfig(), deployConfig)) {
-                savepointOpt = getLatestSavepointPathFromFlinkStateSnapshots(ctx);
-            } else {
-                savepointOpt =
-                        Optional.ofNullable(
-                                        ctx.getResource()
-                                                .getStatus()
-                                                .getJobStatus()
-                                                .getSavepointInfo()
-                                                .getLastSavepoint())
-                                .flatMap(s -> Optional.ofNullable(s.getLocation()));
-            }
+            savepointOpt =
+                    Optional.ofNullable(
+                                    ctx.getResource()
+                                            .getStatus()
+                                            .getJobStatus()
+                                            .getUpgradeSnapshotReference())
+                            .map(
+                                    ref ->
+                                            FlinkStateSnapshotUtils
+                                                    .getAndValidateFlinkStateSnapshotPath(
+                                                            ctx.getKubernetesClient(), ref));
         }
 
         deploy(ctx, spec, deployConfig, savepointOpt, requireHaMetadata);
@@ -351,8 +318,8 @@ public abstract class AbstractJobReconciler<
             resubmitJob(ctx, false);
             return true;
         } else {
-            boolean savepointTriggered = triggerSnapshotIfNeeded(ctx, SnapshotType.SAVEPOINT);
-            boolean checkpointTriggered = triggerSnapshotIfNeeded(ctx, SnapshotType.CHECKPOINT);
+            boolean savepointTriggered = triggerSnapshotIfNeeded(ctx, SAVEPOINT);
+            boolean checkpointTriggered = triggerSnapshotIfNeeded(ctx, CHECKPOINT);
 
             return savepointTriggered || checkpointTriggered;
         }
@@ -381,12 +348,6 @@ public abstract class AbstractJobReconciler<
 
         var createSnapshotResource =
                 FlinkStateSnapshotUtils.shouldCreateSnapshotResource(ctx.getOperatorConfig(), conf);
-        if (!SnapshotTriggerType.PERIODIC.equals(triggerType) && createSnapshotResource) {
-            LOG.error(
-                    "For manual snapshots you need to create FlinkStateSnapshot resources or turn off configuration {}",
-                    SNAPSHOT_RESOURCE_ENABLED.key());
-            return false;
-        }
 
         String jobId = resource.getStatus().getJobStatus().getJobId();
         switch (snapshotType) {
@@ -398,14 +359,18 @@ public abstract class AbstractJobReconciler<
                                 conf.get(CheckpointingOptions.SAVEPOINT_DIRECTORY));
 
                 if (createSnapshotResource) {
-                    FlinkStateSnapshotUtils.createPeriodicSavepointResource(
+                    FlinkStateSnapshotUtils.createSavepointResource(
                             ctx.getKubernetesClient(),
                             resource,
                             savepointDirectory,
+                            triggerType,
                             SavepointFormatType.valueOf(savepointFormatType.name()),
                             conf.getBoolean(
                                     KubernetesOperatorConfigOptions
                                             .OPERATOR_JOB_SAVEPOINT_DISPOSE_ON_DELETE));
+
+                    ReconciliationUtils.updateLastReconciledSnapshotTriggerNonce(
+                            triggerType, resource, SAVEPOINT);
                 } else {
                     var triggerId =
                             ctx.getFlinkService()
@@ -425,8 +390,11 @@ public abstract class AbstractJobReconciler<
                 var checkpointType =
                         conf.get(KubernetesOperatorConfigOptions.OPERATOR_CHECKPOINT_TYPE);
                 if (createSnapshotResource) {
-                    FlinkStateSnapshotUtils.createPeriodicCheckpointResource(
-                            ctx.getKubernetesClient(), resource, checkpointType);
+                    FlinkStateSnapshotUtils.createCheckpointResource(
+                            ctx.getKubernetesClient(), resource, checkpointType, triggerType);
+
+                    ReconciliationUtils.updateLastReconciledSnapshotTriggerNonce(
+                            triggerType, resource, CHECKPOINT);
                 } else {
                     var triggerId =
                             ctx.getFlinkService()
@@ -478,26 +446,30 @@ public abstract class AbstractJobReconciler<
             throws Exception {
         LOG.info("Redeploying from savepoint");
         cancelJob(ctx, UpgradeMode.STATELESS);
-        var snapshotRef = currentDeploySpec.getJob().getFlinkStateSnapshotReference();
         currentDeploySpec.getJob().setUpgradeMode(UpgradeMode.SAVEPOINT);
 
-        var path = currentDeploySpec.getJob().getInitialSavepointPath();
-        if (snapshotRef != null && snapshotRef.getName() != null) {
-            path =
-                    FlinkStateSnapshotUtils.getAndValidateFlinkStateSnapshotPath(
-                            ctx.getKubernetesClient(), snapshotRef);
+        var snapshotRef = currentDeploySpec.getJob().getFlinkStateSnapshotReference();
+        var initialSavepointPath = currentDeploySpec.getJob().getInitialSavepointPath();
+
+        if (snapshotRef == null && initialSavepointPath != null) {
+            snapshotRef = FlinkStateSnapshotReference.fromPath(initialSavepointPath);
         }
 
-        status.getJobStatus()
-                .getSavepointInfo()
-                .setLastSavepoint(Savepoint.of(path, SnapshotTriggerType.UNKNOWN));
+        Optional<String> savepointPath = Optional.empty();
+        if (snapshotRef != null) {
+            savepointPath =
+                    Optional.of(
+                            FlinkStateSnapshotUtils.getAndValidateFlinkStateSnapshotPath(
+                                    ctx.getKubernetesClient(), snapshotRef));
+            status.getJobStatus().setUpgradeSnapshotReference(snapshotRef);
+        }
 
         if (desiredJobState == JobState.RUNNING) {
             deploy(
                     ctx,
                     currentDeploySpec,
                     ctx.getDeployConfig(currentDeploySpec),
-                    Optional.of(path),
+                    savepointPath,
                     false);
         }
         ReconciliationUtils.updateStatusForDeployedSpec(resource, deployConfig, clock);

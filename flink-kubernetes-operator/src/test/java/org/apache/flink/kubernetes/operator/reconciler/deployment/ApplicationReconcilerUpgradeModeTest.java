@@ -29,6 +29,7 @@ import org.apache.flink.kubernetes.operator.TestUtils;
 import org.apache.flink.kubernetes.operator.api.CrdConstants;
 import org.apache.flink.kubernetes.operator.api.FlinkDeployment;
 import org.apache.flink.kubernetes.operator.api.spec.FlinkDeploymentSpec;
+import org.apache.flink.kubernetes.operator.api.spec.FlinkStateSnapshotReference;
 import org.apache.flink.kubernetes.operator.api.spec.FlinkVersion;
 import org.apache.flink.kubernetes.operator.api.spec.JobState;
 import org.apache.flink.kubernetes.operator.api.spec.UpgradeMode;
@@ -36,7 +37,6 @@ import org.apache.flink.kubernetes.operator.api.status.FlinkDeploymentStatus;
 import org.apache.flink.kubernetes.operator.api.status.JobManagerDeploymentStatus;
 import org.apache.flink.kubernetes.operator.api.status.JobStatus;
 import org.apache.flink.kubernetes.operator.api.status.ReconciliationState;
-import org.apache.flink.kubernetes.operator.api.status.Savepoint;
 import org.apache.flink.kubernetes.operator.api.status.SavepointFormatType;
 import org.apache.flink.kubernetes.operator.api.status.SnapshotTriggerType;
 import org.apache.flink.kubernetes.operator.config.KubernetesOperatorConfigOptions;
@@ -250,13 +250,27 @@ public class ApplicationReconcilerUpgradeModeTest extends OperatorTestBase {
         deployment.getSpec().getJob().setUpgradeMode(UpgradeMode.LAST_STATE);
         deployment.getSpec().setRestartNonce(200L);
         flinkService.setHaDataAvailable(false);
-        FlinkStateSnapshotUtils.createUpgradeSavepointResource(
-                kubernetesClient, deployment, "finished_sp", SavepointFormatType.CANONICAL, false);
-        deployment
-                .getStatus()
-                .getJobStatus()
-                .getSavepointInfo()
-                .setLastSavepoint(Savepoint.of("finished_sp", SnapshotTriggerType.UPGRADE));
+        if (legacySnapshots) {
+            deployment
+                    .getStatus()
+                    .getJobStatus()
+                    .setUpgradeSnapshotReference(
+                            FlinkStateSnapshotReference.fromPath("finished_sp"));
+        } else {
+            var snapshot =
+                    FlinkStateSnapshotUtils.createSavepointResource(
+                            kubernetesClient,
+                            deployment,
+                            "finished_sp",
+                            SnapshotTriggerType.UPGRADE,
+                            SavepointFormatType.CANONICAL,
+                            false);
+            deployment
+                    .getStatus()
+                    .getJobStatus()
+                    .setUpgradeSnapshotReference(
+                            FlinkStateSnapshotReference.fromResource(snapshot));
+        }
         deployment.getStatus().getJobStatus().setState("FINISHED");
         deployment.getStatus().setJobManagerDeploymentStatus(JobManagerDeploymentStatus.READY);
         deployment
@@ -398,12 +412,7 @@ public class ApplicationReconcilerUpgradeModeTest extends OperatorTestBase {
             assertEquals("init-sp", flinkService.listJobs().get(0).f0);
             assertEquals(
                     "init-sp",
-                    deployment
-                            .getStatus()
-                            .getJobStatus()
-                            .getSavepointInfo()
-                            .getLastSavepoint()
-                            .getLocation());
+                    deployment.getStatus().getJobStatus().getUpgradeSnapshotReference().getPath());
             assertEquals(UpgradeMode.SAVEPOINT, lastReconciledSpec.getJob().getUpgradeMode());
         } else {
             assertNull(flinkService.listJobs().get(0).f0);

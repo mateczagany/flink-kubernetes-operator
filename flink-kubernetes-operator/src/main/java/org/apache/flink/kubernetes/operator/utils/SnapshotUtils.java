@@ -329,7 +329,7 @@ public class SnapshotUtils {
             if (SnapshotUtils.savepointInProgress(jobStatus)) {
                 var savepointInfo = jobStatus.getSavepointInfo();
                 ReconciliationUtils.updateLastReconciledSnapshotTriggerNonce(
-                        savepointInfo, resource, SAVEPOINT);
+                        savepointInfo.getTriggerType(), resource, SAVEPOINT);
                 savepointInfo.resetTrigger();
                 LOG.error("Job is not running, cancelling savepoint operation");
                 eventRecorder.triggerEvent(
@@ -344,7 +344,7 @@ public class SnapshotUtils {
             if (SnapshotUtils.checkpointInProgress(jobStatus)) {
                 var checkpointInfo = jobStatus.getCheckpointInfo();
                 ReconciliationUtils.updateLastReconciledSnapshotTriggerNonce(
-                        checkpointInfo, resource, CHECKPOINT);
+                        checkpointInfo.getTriggerType(), resource, CHECKPOINT);
                 checkpointInfo.resetTrigger();
                 LOG.error("Job is not running, cancelling checkpoint operation");
                 eventRecorder.triggerEvent(

@@ -18,6 +18,7 @@
 package org.apache.flink.kubernetes.operator.api.spec;
 
 import org.apache.flink.annotation.Experimental;
+import org.apache.flink.kubernetes.operator.api.FlinkStateSnapshot;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.AllArgsConstructor;
@@ -45,4 +46,13 @@ public class FlinkStateSnapshotReference {
      * savepoint path.
      */
     private String path;
+
+    public static FlinkStateSnapshotReference fromPath(String path) {
+        return new FlinkStateSnapshotReference(null, null, path);
+    }
+
+    public static FlinkStateSnapshotReference fromResource(FlinkStateSnapshot resource) {
+        return new FlinkStateSnapshotReference(
+                resource.getMetadata().getNamespace(), resource.getMetadata().getName(), null);
+    }
 }

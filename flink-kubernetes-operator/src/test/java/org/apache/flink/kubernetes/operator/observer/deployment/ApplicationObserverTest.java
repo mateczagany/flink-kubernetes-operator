@@ -491,17 +491,12 @@ public class ApplicationObserverTest extends OperatorTestBase {
                 deployment.getStatus().getJobStatus().getState());
         assertEquals(
                 "last-SP",
-                deployment
-                        .getStatus()
-                        .getJobStatus()
-                        .getSavepointInfo()
-                        .getLastSavepoint()
-                        .getLocation());
+                deployment.getStatus().getJobStatus().getUpgradeSnapshotReference().getPath());
         assertFalse(SnapshotUtils.savepointInProgress(deployment.getStatus().getJobStatus()));
 
         observer.observe(deployment, readyContext);
         assertEquals(
-                3,
+                2,
                 deployment
                         .getStatus()
                         .getJobStatus()

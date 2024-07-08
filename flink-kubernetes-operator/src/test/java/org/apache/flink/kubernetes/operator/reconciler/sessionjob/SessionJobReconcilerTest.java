@@ -26,6 +26,7 @@ import org.apache.flink.kubernetes.operator.TestUtils;
 import org.apache.flink.kubernetes.operator.api.CrdConstants;
 import org.apache.flink.kubernetes.operator.api.FlinkSessionJob;
 import org.apache.flink.kubernetes.operator.api.spec.FlinkSessionJobSpec;
+import org.apache.flink.kubernetes.operator.api.spec.FlinkStateSnapshotReference;
 import org.apache.flink.kubernetes.operator.api.spec.JobState;
 import org.apache.flink.kubernetes.operator.api.spec.UpgradeMode;
 import org.apache.flink.kubernetes.operator.api.status.FlinkSessionJobStatus;
@@ -131,18 +132,16 @@ public class SessionJobReconcilerTest extends OperatorTestBase {
         if (legacySnapshots) {
             assertEquals(
                     "savepoint_0",
-                    sessionJob
-                            .getStatus()
-                            .getJobStatus()
-                            .getSavepointInfo()
-                            .getLastSavepoint()
-                            .getLocation());
+                    sessionJob.getStatus().getJobStatus().getUpgradeSnapshotReference().getPath());
         } else {
             var snapshots =
                     FlinkStateSnapshotUtils.getFlinkStateSnapshotsForResource(
                             flinkService.getKubernetesClient(), sessionJob);
             assertThat(snapshots).isNotEmpty();
             assertEquals("savepoint_0", snapshots.get(0).getSpec().getSavepoint().getPath());
+            assertEquals(
+                    FlinkStateSnapshotReference.fromResource(snapshots.get(0)),
+                    sessionJob.getStatus().getJobStatus().getUpgradeSnapshotReference());
         }
     }
 
@@ -176,18 +175,16 @@ public class SessionJobReconcilerTest extends OperatorTestBase {
         if (legacySnapshots) {
             assertEquals(
                     "savepoint_0",
-                    sessionJob
-                            .getStatus()
-                            .getJobStatus()
-                            .getSavepointInfo()
-                            .getLastSavepoint()
-                            .getLocation());
+                    sessionJob.getStatus().getJobStatus().getUpgradeSnapshotReference().getPath());
         } else {
             var snapshots =
                     FlinkStateSnapshotUtils.getFlinkStateSnapshotsForResource(
                             flinkService.getKubernetesClient(), sessionJob);
             assertThat(snapshots).isNotEmpty();
             assertEquals("savepoint_0", snapshots.get(0).getSpec().getSavepoint().getPath());
+            assertEquals(
+                    FlinkStateSnapshotReference.fromResource(snapshots.get(0)),
+                    sessionJob.getStatus().getJobStatus().getUpgradeSnapshotReference());
         }
     }
 
@@ -415,21 +412,12 @@ public class SessionJobReconcilerTest extends OperatorTestBase {
         verifyJobState(statefulSessionJob, JobState.SUSPENDED, "FINISHED");
         if (legacySnapshots) {
             assertEquals(
-                    1,
+                    "savepoint_0",
                     statefulSessionJob
                             .getStatus()
                             .getJobStatus()
-                            .getSavepointInfo()
-                            .getSavepointHistory()
-                            .size());
-            assertEquals(
-                    SnapshotTriggerType.UPGRADE,
-                    statefulSessionJob
-                            .getStatus()
-                            .getJobStatus()
-                            .getSavepointInfo()
-                            .getLastSavepoint()
-                            .getTriggerType());
+                            .getUpgradeSnapshotReference()
+                            .getPath());
         } else {
             var snapshots =
                     FlinkStateSnapshotUtils.getFlinkStateSnapshotsForResource(
@@ -442,6 +430,9 @@ public class SessionJobReconcilerTest extends OperatorTestBase {
                             .getMetadata()
                             .getLabels()
                             .get(CrdConstants.LABEL_SNAPSHOT_TYPE));
+            assertEquals(
+                    FlinkStateSnapshotReference.fromResource(snapshots.get(0)),
+                    statefulSessionJob.getStatus().getJobStatus().getUpgradeSnapshotReference());
         }
 
         flinkService.clear();
@@ -534,7 +525,7 @@ public class SessionJobReconcilerTest extends OperatorTestBase {
 
         sp1SessionJob.getStatus().getJobStatus().getSavepointInfo().resetTrigger();
         ReconciliationUtils.updateLastReconciledSnapshotTriggerNonce(
-                sp1SessionJob.getStatus().getJobStatus().getSavepointInfo(),
+                sp1SessionJob.getStatus().getJobStatus().getSavepointInfo().getTriggerType(),
                 sp1SessionJob,
                 SAVEPOINT);
 
@@ -556,7 +547,7 @@ public class SessionJobReconcilerTest extends OperatorTestBase {
 
         sp1SessionJob.getStatus().getJobStatus().getSavepointInfo().resetTrigger();
         ReconciliationUtils.updateLastReconciledSnapshotTriggerNonce(
-                sp1SessionJob.getStatus().getJobStatus().getSavepointInfo(),
+                sp1SessionJob.getStatus().getJobStatus().getSavepointInfo().getTriggerType(),
                 sp1SessionJob,
                 SAVEPOINT);
 
@@ -569,7 +560,7 @@ public class SessionJobReconcilerTest extends OperatorTestBase {
 
         sp1SessionJob.getStatus().getJobStatus().getSavepointInfo().resetTrigger();
         ReconciliationUtils.updateLastReconciledSnapshotTriggerNonce(
-                sp1SessionJob.getStatus().getJobStatus().getSavepointInfo(),
+                sp1SessionJob.getStatus().getJobStatus().getSavepointInfo().getTriggerType(),
                 sp1SessionJob,
                 SAVEPOINT);
 
@@ -626,7 +617,7 @@ public class SessionJobReconcilerTest extends OperatorTestBase {
 
         getCheckpointInfo(sp1SessionJob).resetTrigger();
         ReconciliationUtils.updateLastReconciledSnapshotTriggerNonce(
-                getCheckpointInfo(sp1SessionJob), sp1SessionJob, CHECKPOINT);
+                getCheckpointInfo(sp1SessionJob).getTriggerType(), sp1SessionJob, CHECKPOINT);
 
         // don't trigger when nonce is cleared
         getJobSpec(sp1SessionJob).setCheckpointTriggerNonce(null);

@@ -26,9 +26,7 @@ import org.apache.flink.kubernetes.operator.api.spec.FlinkSessionJobSpec;
 import org.apache.flink.kubernetes.operator.api.spec.UpgradeMode;
 import org.apache.flink.kubernetes.operator.api.status.FlinkSessionJobStatus;
 import org.apache.flink.kubernetes.operator.api.status.JobManagerDeploymentStatus;
-import org.apache.flink.kubernetes.operator.api.status.Savepoint;
 import org.apache.flink.kubernetes.operator.api.status.SavepointFormatType;
-import org.apache.flink.kubernetes.operator.api.status.SnapshotTriggerType;
 import org.apache.flink.kubernetes.operator.autoscaler.KubernetesJobAutoScalerContext;
 import org.apache.flink.kubernetes.operator.config.KubernetesOperatorConfigOptions;
 import org.apache.flink.kubernetes.operator.controller.FlinkResourceContext;
@@ -111,24 +109,15 @@ public class SessionJobReconciler
                 ctx.getFlinkService().cancelSessionJob(ctx.getResource(), upgradeMode, conf);
         savepointOpt.ifPresent(
                 location -> {
-                    if (FlinkStateSnapshotUtils.shouldCreateSnapshotResource(
-                            ctx.getOperatorConfig(), conf)) {
-                        FlinkStateSnapshotUtils.createUpgradeSavepointResource(
-                                ctx.getKubernetesClient(),
-                                ctx.getResource(),
-                                location,
-                                SavepointFormatType.valueOf(savepointFormatType.name()),
-                                conf.get(
-                                        KubernetesOperatorConfigOptions
-                                                .OPERATOR_JOB_SAVEPOINT_DISPOSE_ON_DELETE));
-                    } else {
-                        Savepoint sp = Savepoint.of(location, SnapshotTriggerType.UPGRADE);
-                        ctx.getResource()
-                                .getStatus()
-                                .getJobStatus()
-                                .getSavepointInfo()
-                                .updateLastSavepoint(sp);
-                    }
+                    var snapshotRef =
+                            FlinkStateSnapshotUtils.createReferenceForUpgradeSavepoint(
+                                    ctx,
+                                    SavepointFormatType.valueOf(savepointFormatType.name()),
+                                    location);
+                    ctx.getResource()
+                            .getStatus()
+                            .getJobStatus()
+                            .setUpgradeSnapshotReference(snapshotRef);
                 });
         ctx.getResource().getStatus().getJobStatus().setJobId(null);
     }

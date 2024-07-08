@@ -25,6 +25,7 @@ import org.apache.flink.kubernetes.operator.TestingFlinkService;
 import org.apache.flink.kubernetes.operator.api.FlinkDeployment;
 import org.apache.flink.kubernetes.operator.api.lifecycle.ResourceLifecycleState;
 import org.apache.flink.kubernetes.operator.api.spec.FlinkDeploymentSpec;
+import org.apache.flink.kubernetes.operator.api.spec.FlinkStateSnapshotReference;
 import org.apache.flink.kubernetes.operator.api.spec.FlinkVersion;
 import org.apache.flink.kubernetes.operator.api.spec.IngressSpec;
 import org.apache.flink.kubernetes.operator.api.spec.JobState;
@@ -396,6 +397,9 @@ public class FlinkDeploymentControllerTest {
                 new TaskManagerInfo(
                         "component=taskmanager,app=" + appCluster.getMetadata().getName(), 1),
                 appCluster.getStatus().getTaskManager());
+        assertEquals(
+                FlinkStateSnapshotReference.fromPath("s0"),
+                appCluster.getStatus().getJobStatus().getUpgradeSnapshotReference());
 
         var previousJobs = new ArrayList<>(jobs);
         appCluster.getSpec().getJob().setInitialSavepointPath("s1");
@@ -403,17 +407,13 @@ public class FlinkDeploymentControllerTest {
         // Send in a no-op change
         testController.reconcile(appCluster, context);
         assertEquals(previousJobs, new ArrayList<>(flinkService.listJobs()));
+        assertEquals(
+                FlinkStateSnapshotReference.fromPath("s0"),
+                appCluster.getStatus().getJobStatus().getUpgradeSnapshotReference());
 
         // Upgrade job
         appCluster.getSpec().getJob().setParallelism(100);
 
-        assertTrue(
-                appCluster
-                        .getStatus()
-                        .getJobStatus()
-                        .getSavepointInfo()
-                        .getSavepointHistory()
-                        .isEmpty());
         assertEquals(0L, testController.reconcile(appCluster, context).getScheduleDelay().get());
         assertEquals(
                 JobState.SUSPENDED,
@@ -423,29 +423,16 @@ public class FlinkDeploymentControllerTest {
                         .deserializeLastReconciledSpec()
                         .getJob()
                         .getState());
-        assertEquals(
-                1,
-                appCluster
-                        .getStatus()
-                        .getJobStatus()
-                        .getSavepointInfo()
-                        .getSavepointHistory()
-                        .size());
         assertEquals(new TaskManagerInfo("", 0), appCluster.getStatus().getTaskManager());
+        assertEquals(
+                FlinkStateSnapshotReference.fromPath("savepoint_0"),
+                appCluster.getStatus().getJobStatus().getUpgradeSnapshotReference());
 
         testController.reconcile(appCluster, context);
         jobs = flinkService.listJobs();
         assertEquals(1, jobs.size());
         assertEquals("savepoint_0", jobs.get(0).f0);
         testController.reconcile(appCluster, context);
-        assertEquals(
-                1,
-                appCluster
-                        .getStatus()
-                        .getJobStatus()
-                        .getSavepointInfo()
-                        .getSavepointHistory()
-                        .size());
 
         // Suspend job
         appCluster.getSpec().getJob().setState(JobState.SUSPENDED);
@@ -453,6 +440,9 @@ public class FlinkDeploymentControllerTest {
         assertEquals(
                 JobManagerDeploymentStatus.READY,
                 appCluster.getStatus().getJobManagerDeploymentStatus());
+        assertEquals(
+                FlinkStateSnapshotReference.fromPath("savepoint_1"),
+                appCluster.getStatus().getJobStatus().getUpgradeSnapshotReference());
 
         // Resume from last savepoint
         appCluster.getSpec().getJob().setState(JobState.RUNNING);

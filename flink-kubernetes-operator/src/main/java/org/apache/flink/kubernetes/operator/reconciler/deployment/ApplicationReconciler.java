@@ -249,28 +249,15 @@ public class ApplicationReconciler
         var savepointOpt = ctx.getFlinkService().cancelJob(ctx.getResource(), upgradeMode, conf);
         savepointOpt.ifPresent(
                 location -> {
-                    if (FlinkStateSnapshotUtils.shouldCreateSnapshotResource(
-                            ctx.getOperatorConfig(), conf)) {
-                        FlinkStateSnapshotUtils.createUpgradeSavepointResource(
-                                ctx.getKubernetesClient(),
-                                ctx.getResource(),
-                                location,
-                                SavepointFormatType.valueOf(savepointFormatType.name()),
-                                conf.get(
-                                        KubernetesOperatorConfigOptions
-                                                .OPERATOR_JOB_SAVEPOINT_DISPOSE_ON_DELETE));
-                    } else {
-                        Savepoint sp =
-                                Savepoint.of(
-                                        location,
-                                        SnapshotTriggerType.UPGRADE,
-                                        SavepointFormatType.valueOf(savepointFormatType.name()));
-                        ctx.getResource()
-                                .getStatus()
-                                .getJobStatus()
-                                .getSavepointInfo()
-                                .updateLastSavepoint(sp);
-                    }
+                    var snapshotRef =
+                            FlinkStateSnapshotUtils.createReferenceForUpgradeSavepoint(
+                                    ctx,
+                                    SavepointFormatType.valueOf(savepointFormatType.name()),
+                                    location);
+                    ctx.getResource()
+                            .getStatus()
+                            .getJobStatus()
+                            .setUpgradeSnapshotReference(snapshotRef);
                 });
     }
 

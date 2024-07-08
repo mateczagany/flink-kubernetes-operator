@@ -34,7 +34,6 @@ import org.apache.flink.kubernetes.operator.api.status.JobManagerDeploymentStatu
 import org.apache.flink.kubernetes.operator.api.status.JobStatus;
 import org.apache.flink.kubernetes.operator.api.status.ReconciliationState;
 import org.apache.flink.kubernetes.operator.api.status.ReconciliationStatus;
-import org.apache.flink.kubernetes.operator.api.status.SnapshotInfo;
 import org.apache.flink.kubernetes.operator.api.status.SnapshotTriggerType;
 import org.apache.flink.kubernetes.operator.api.status.TaskManagerInfo;
 import org.apache.flink.kubernetes.operator.api.utils.SpecUtils;
@@ -186,12 +185,12 @@ public class ReconciliationUtils {
     }
 
     public static <SPEC extends AbstractFlinkSpec> void updateLastReconciledSnapshotTriggerNonce(
-            SnapshotInfo snapshotInfo,
+            SnapshotTriggerType snapshotTriggerType,
             AbstractFlinkResource<SPEC, ?> target,
             SnapshotType snapshotType) {
 
         // We only need to update for MANUAL triggers
-        if (snapshotInfo.getTriggerType() != SnapshotTriggerType.MANUAL) {
+        if (snapshotTriggerType != SnapshotTriggerType.MANUAL) {
             return;
         }
 

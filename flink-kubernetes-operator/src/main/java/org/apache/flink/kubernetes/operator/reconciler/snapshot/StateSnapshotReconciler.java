@@ -52,7 +52,6 @@ public class StateSnapshotReconciler {
     private final EventRecorder eventRecorder;
 
     public void reconcile(FlinkStateSnapshotContext ctx) throws Exception {
-        var source = ctx.getResource().getSpec().getJobReference();
         var resource = ctx.getResource();
 
         var savepointState = resource.getStatus().getState();

@@ -302,6 +302,7 @@ public class AbstractFlinkServiceTest {
         assertTrue(cancelFuture.isDone());
         assertEquals(jobID, cancelFuture.get());
         assertNull(jobStatus.getSavepointInfo().getLastSavepoint());
+        assertNull(jobStatus.getUpgradeSnapshotReference());
     }
 
     @ParameterizedTest
@@ -540,6 +541,7 @@ public class AbstractFlinkServiceTest {
                 configManager.getObserveConfig(deployment),
                 false);
         assertNull(jobStatus.getSavepointInfo().getLastSavepoint());
+        assertNull(jobStatus.getUpgradeSnapshotReference());
     }
 
     @Test

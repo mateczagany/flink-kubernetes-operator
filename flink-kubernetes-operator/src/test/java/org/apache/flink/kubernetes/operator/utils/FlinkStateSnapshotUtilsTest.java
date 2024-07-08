@@ -152,8 +152,8 @@ public class FlinkStateSnapshotUtilsTest {
         var checkpointType = CheckpointType.FULL;
 
         var snapshot =
-                FlinkStateSnapshotUtils.createPeriodicCheckpointResource(
-                        client, deployment, checkpointType);
+                FlinkStateSnapshotUtils.createCheckpointResource(
+                        client, deployment, checkpointType, SnapshotTriggerType.PERIODIC);
 
         assertTrue(snapshot.getSpec().isCheckpoint());
         assertEquals(checkpointType, snapshot.getSpec().getCheckpoint().getCheckpointType());
@@ -169,8 +169,13 @@ public class FlinkStateSnapshotUtilsTest {
         var disposeOnDelete = true;
 
         var snapshot =
-                FlinkStateSnapshotUtils.createUpgradeSavepointResource(
-                        client, deployment, SAVEPOINT_PATH, formatType, disposeOnDelete);
+                FlinkStateSnapshotUtils.createSavepointResource(
+                        client,
+                        deployment,
+                        SAVEPOINT_PATH,
+                        SnapshotTriggerType.UPGRADE,
+                        formatType,
+                        disposeOnDelete);
         assertSavepointResource(
                 snapshot,
                 deployment,
@@ -187,8 +192,13 @@ public class FlinkStateSnapshotUtilsTest {
         var disposeOnDelete = true;
 
         var snapshot =
-                FlinkStateSnapshotUtils.createPeriodicSavepointResource(
-                        client, deployment, SAVEPOINT_PATH, formatType, disposeOnDelete);
+                FlinkStateSnapshotUtils.createSavepointResource(
+                        client,
+                        deployment,
+                        SAVEPOINT_PATH,
+                        SnapshotTriggerType.PERIODIC,
+                        formatType,
+                        disposeOnDelete);
         assertSavepointResource(
                 snapshot,
                 deployment,

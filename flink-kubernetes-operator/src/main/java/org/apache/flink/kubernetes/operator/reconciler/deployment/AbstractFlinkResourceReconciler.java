@@ -27,14 +27,12 @@ import org.apache.flink.kubernetes.operator.api.FlinkDeployment;
 import org.apache.flink.kubernetes.operator.api.diff.DiffType;
 import org.apache.flink.kubernetes.operator.api.spec.AbstractFlinkSpec;
 import org.apache.flink.kubernetes.operator.api.spec.FlinkDeploymentSpec;
-import org.apache.flink.kubernetes.operator.api.spec.JobSpec;
+import org.apache.flink.kubernetes.operator.api.spec.FlinkStateSnapshotReference;
 import org.apache.flink.kubernetes.operator.api.spec.JobState;
 import org.apache.flink.kubernetes.operator.api.spec.UpgradeMode;
 import org.apache.flink.kubernetes.operator.api.status.CommonStatus;
 import org.apache.flink.kubernetes.operator.api.status.JobManagerDeploymentStatus;
 import org.apache.flink.kubernetes.operator.api.status.ReconciliationState;
-import org.apache.flink.kubernetes.operator.api.status.Savepoint;
-import org.apache.flink.kubernetes.operator.api.status.SnapshotTriggerType;
 import org.apache.flink.kubernetes.operator.autoscaler.KubernetesJobAutoScalerContext;
 import org.apache.flink.kubernetes.operator.config.KubernetesOperatorConfigOptions;
 import org.apache.flink.kubernetes.operator.controller.FlinkResourceContext;
@@ -182,18 +180,18 @@ public abstract class AbstractFlinkResourceReconciler<
 
     private Optional<String> getInitialSnapshotPath(
             FlinkResourceContext<CR> ctx, AbstractFlinkSpec spec) {
-        if (spec.getJob() == null || spec.getJob().getFlinkStateSnapshotReference() == null) {
-            return Optional.ofNullable(spec.getJob()).map(JobSpec::getInitialSavepointPath);
+        if (spec.getJob() == null) {
+            return Optional.empty();
         }
 
-        var snapshotRef = spec.getJob().getFlinkStateSnapshotReference();
-        if (snapshotRef.getName() != null) {
+        if (spec.getJob().getFlinkStateSnapshotReference() != null) {
             return Optional.of(
                     FlinkStateSnapshotUtils.getAndValidateFlinkStateSnapshotPath(
-                            ctx.getKubernetesClient(), snapshotRef));
+                            ctx.getKubernetesClient(),
+                            spec.getJob().getFlinkStateSnapshotReference()));
         }
 
-        return Optional.empty();
+        return Optional.ofNullable(spec.getJob().getInitialSavepointPath());
     }
 
     private void applyAutoscaler(FlinkResourceContext<CR> ctx) throws Exception {
@@ -239,11 +237,12 @@ public abstract class AbstractFlinkResourceReconciler<
             var initialSp = spec.getJob().getInitialSavepointPath();
 
             if (snapshotRef != null) {
+                status.getJobStatus().setUpgradeSnapshotReference(snapshotRef);
                 initialUpgradeMode = UpgradeMode.SAVEPOINT;
             } else if (initialSp != null) {
                 status.getJobStatus()
-                        .getSavepointInfo()
-                        .setLastSavepoint(Savepoint.of(initialSp, SnapshotTriggerType.UNKNOWN));
+                        .setUpgradeSnapshotReference(
+                                FlinkStateSnapshotReference.fromPath(initialSp));
                 initialUpgradeMode = UpgradeMode.SAVEPOINT;
             }
 
