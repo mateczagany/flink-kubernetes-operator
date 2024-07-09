@@ -42,6 +42,7 @@ import org.apache.flink.kubernetes.operator.api.spec.AbstractFlinkSpec;
 import org.apache.flink.kubernetes.operator.api.spec.FlinkDeploymentSpec;
 import org.apache.flink.kubernetes.operator.api.spec.FlinkStateSnapshotReference;
 import org.apache.flink.kubernetes.operator.api.spec.FlinkVersion;
+import org.apache.flink.kubernetes.operator.api.spec.JobReference;
 import org.apache.flink.kubernetes.operator.api.spec.JobSpec;
 import org.apache.flink.kubernetes.operator.api.spec.JobState;
 import org.apache.flink.kubernetes.operator.api.spec.KubernetesDeploymentMode;
@@ -68,7 +69,6 @@ import org.apache.flink.kubernetes.operator.reconciler.SnapshotType;
 import org.apache.flink.kubernetes.operator.reconciler.TestReconcilerAdapter;
 import org.apache.flink.kubernetes.operator.service.NativeFlinkService;
 import org.apache.flink.kubernetes.operator.utils.EventRecorder;
-import org.apache.flink.kubernetes.operator.utils.FlinkStateSnapshotUtils;
 import org.apache.flink.kubernetes.operator.utils.SnapshotStatus;
 import org.apache.flink.kubernetes.operator.utils.SnapshotUtils;
 import org.apache.flink.runtime.client.JobStatusMessage;
@@ -117,6 +117,7 @@ import static org.apache.flink.kubernetes.operator.api.utils.FlinkResourceUtils.
 import static org.apache.flink.kubernetes.operator.api.utils.FlinkResourceUtils.getReconciledJobState;
 import static org.apache.flink.kubernetes.operator.api.utils.FlinkResourceUtils.getSavepointInfo;
 import static org.apache.flink.kubernetes.operator.config.KubernetesOperatorConfigOptions.OPERATOR_CLUSTER_HEALTH_CHECK_ENABLED;
+import static org.apache.flink.kubernetes.operator.config.KubernetesOperatorConfigOptions.OPERATOR_JOB_SAVEPOINT_DISPOSE_ON_DELETE;
 import static org.apache.flink.kubernetes.operator.config.KubernetesOperatorConfigOptions.SNAPSHOT_RESOURCE_ENABLED;
 import static org.apache.flink.kubernetes.operator.reconciler.SnapshotType.CHECKPOINT;
 import static org.apache.flink.kubernetes.operator.reconciler.SnapshotType.SAVEPOINT;
@@ -178,9 +179,7 @@ public class ApplicationReconcilerTest extends OperatorTestBase {
         reconciler.cleanup(
                 deployment, TestUtils.createContextWithReadyFlinkDeployment(kubernetesClient));
 
-        assertThat(
-                        FlinkStateSnapshotUtils.getFlinkStateSnapshotsForResource(
-                                kubernetesClient, deployment))
+        assertThat(TestUtils.getFlinkStateSnapshotsForResource(kubernetesClient, deployment))
                 .hasSize(1)
                 .allSatisfy(
                         snapshot -> {
@@ -215,9 +214,7 @@ public class ApplicationReconcilerTest extends OperatorTestBase {
         reconciler.cleanup(
                 deployment, TestUtils.createContextWithReadyFlinkDeployment(kubernetesClient));
 
-        assertThat(
-                        FlinkStateSnapshotUtils.getFlinkStateSnapshotsForResource(
-                                kubernetesClient, deployment))
+        assertThat(TestUtils.getFlinkStateSnapshotsForResource(kubernetesClient, deployment))
                 .hasSize(1)
                 .allSatisfy(
                         snapshot -> {
@@ -306,9 +303,7 @@ public class ApplicationReconcilerTest extends OperatorTestBase {
 
         runningJobs = flinkService.listJobs();
         assertEquals(1, flinkService.getRunningCount());
-        var snapshots =
-                FlinkStateSnapshotUtils.getFlinkStateSnapshotsForResource(
-                        kubernetesClient, deployment);
+        var snapshots = TestUtils.getFlinkStateSnapshotsForResource(kubernetesClient, deployment);
         assertThat(snapshots).isNotEmpty();
         assertThat(snapshots.get(0).getSpec().getSavepoint().getPath()).isEqualTo("savepoint_0");
         assertEquals(
@@ -402,6 +397,73 @@ public class ApplicationReconcilerTest extends OperatorTestBase {
         FlinkDeployment deployment = TestUtils.buildApplicationCluster();
         deployment.getSpec().getFlinkConfiguration().put(SNAPSHOT_RESOURCE_ENABLED.key(), "false");
         testSnapshotLegacy(deployment, SAVEPOINT);
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    public void triggerSavepointWithSnapshotResource(boolean disposeOnDelete) throws Exception {
+        var deployment = TestUtils.buildApplicationCluster();
+        if (disposeOnDelete) {
+            deployment
+                    .getSpec()
+                    .getFlinkConfiguration()
+                    .put(OPERATOR_JOB_SAVEPOINT_DISPOSE_ON_DELETE.key(), "true");
+        }
+
+        reconciler.reconcile(deployment, context);
+        var runningJobs = flinkService.listJobs();
+        verifyAndSetRunningJobsToStatus(deployment, runningJobs);
+
+        var snDeployment = ReconciliationUtils.clone(deployment);
+
+        // trigger when nonce is defined
+        var triggerNonce = ThreadLocalRandom.current().nextLong();
+        snDeployment.getSpec().getJob().setSavepointTriggerNonce(triggerNonce);
+        reconciler.reconcile(snDeployment, context);
+
+        assertEquals(triggerNonce, getReconciledJobSpec(snDeployment).getSavepointTriggerNonce());
+        assertNull(snDeployment.getStatus().getJobStatus().getSavepointInfo().getLastSavepoint());
+        assertThat(TestUtils.getFlinkStateSnapshotsForResource(kubernetesClient, snDeployment))
+                .hasSize(1)
+                .allSatisfy(
+                        snapshot -> {
+                            assertTrue(snapshot.getSpec().isSavepoint());
+                            assertFalse(snapshot.getSpec().getSavepoint().getAlreadyExists());
+                            assertEquals(
+                                    disposeOnDelete,
+                                    snapshot.getSpec().getSavepoint().getDisposeOnDelete());
+                            assertEquals(
+                                    JobReference.fromFlinkResource(snDeployment),
+                                    snapshot.getSpec().getJobReference());
+                        });
+    }
+
+    @Test
+    public void triggerCheckpointWithSnapshotResource() throws Exception {
+        FlinkDeployment deployment = TestUtils.buildApplicationCluster();
+
+        reconciler.reconcile(deployment, context);
+        var runningJobs = flinkService.listJobs();
+        verifyAndSetRunningJobsToStatus(deployment, runningJobs);
+
+        FlinkDeployment snDeployment = ReconciliationUtils.clone(deployment);
+
+        // trigger when nonce is defined
+        var triggerNonce = ThreadLocalRandom.current().nextLong();
+        snDeployment.getSpec().getJob().setCheckpointTriggerNonce(triggerNonce);
+        reconciler.reconcile(snDeployment, context);
+
+        assertEquals(triggerNonce, getReconciledJobSpec(snDeployment).getCheckpointTriggerNonce());
+        assertNull(snDeployment.getStatus().getJobStatus().getSavepointInfo().getLastSavepoint());
+        assertThat(TestUtils.getFlinkStateSnapshotsForResource(kubernetesClient, snDeployment))
+                .hasSize(1)
+                .allSatisfy(
+                        snapshot -> {
+                            assertTrue(snapshot.getSpec().isCheckpoint());
+                            assertEquals(
+                                    JobReference.fromFlinkResource(snDeployment),
+                                    snapshot.getSpec().getJobReference());
+                        });
     }
 
     @Test

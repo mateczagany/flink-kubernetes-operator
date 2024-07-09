@@ -169,8 +169,7 @@ public class ApplicationReconcilerUpgradeModeTest extends OperatorTestBase {
         assertEquals(1, flinkService.getRunningCount());
 
         var snapshots =
-                FlinkStateSnapshotUtils.getFlinkStateSnapshotsForResource(
-                        kubernetesClient, modifiedDeployment);
+                TestUtils.getFlinkStateSnapshotsForResource(kubernetesClient, modifiedDeployment);
         assertThat(snapshots).isNotEmpty();
         assertEquals("savepoint_0", snapshots.get(0).getSpec().getSavepoint().getPath());
         assertEquals(
@@ -661,9 +660,7 @@ public class ApplicationReconcilerUpgradeModeTest extends OperatorTestBase {
                 org.apache.flink.api.common.JobStatus.FINISHED.name(),
                 deployment.getStatus().getJobStatus().getState());
 
-        var snapshots =
-                FlinkStateSnapshotUtils.getFlinkStateSnapshotsForResource(
-                        kubernetesClient, deployment);
+        var snapshots = TestUtils.getFlinkStateSnapshotsForResource(kubernetesClient, deployment);
         assertThat(snapshots).isNotEmpty();
         assertEquals(expectedSavepointPath, snapshots.get(0).getSpec().getSavepoint().getPath());
 
@@ -718,9 +715,7 @@ public class ApplicationReconcilerUpgradeModeTest extends OperatorTestBase {
                         .getImage());
         // Upgrade mode changes from stateless to last-state should trigger a savepoint
         final String expectedSavepointPath = "savepoint_0";
-        var snapshots =
-                FlinkStateSnapshotUtils.getFlinkStateSnapshotsForResource(
-                        kubernetesClient, deployment);
+        var snapshots = TestUtils.getFlinkStateSnapshotsForResource(kubernetesClient, deployment);
         assertThat(snapshots).isNotEmpty();
         assertEquals(expectedSavepointPath, snapshots.get(0).getSpec().getSavepoint().getPath());
     }

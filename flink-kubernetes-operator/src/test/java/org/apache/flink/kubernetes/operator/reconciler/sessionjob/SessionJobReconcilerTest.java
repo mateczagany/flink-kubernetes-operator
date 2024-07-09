@@ -37,7 +37,6 @@ import org.apache.flink.kubernetes.operator.config.FlinkConfigManager;
 import org.apache.flink.kubernetes.operator.config.KubernetesOperatorConfigOptions;
 import org.apache.flink.kubernetes.operator.reconciler.ReconciliationUtils;
 import org.apache.flink.kubernetes.operator.reconciler.TestReconcilerAdapter;
-import org.apache.flink.kubernetes.operator.utils.FlinkStateSnapshotUtils;
 import org.apache.flink.kubernetes.operator.utils.SnapshotUtils;
 import org.apache.flink.runtime.client.JobStatusMessage;
 
@@ -135,7 +134,7 @@ public class SessionJobReconcilerTest extends OperatorTestBase {
                     sessionJob.getStatus().getJobStatus().getUpgradeSnapshotReference().getPath());
         } else {
             var snapshots =
-                    FlinkStateSnapshotUtils.getFlinkStateSnapshotsForResource(
+                    TestUtils.getFlinkStateSnapshotsForResource(
                             flinkService.getKubernetesClient(), sessionJob);
             assertThat(snapshots).isNotEmpty();
             assertEquals("savepoint_0", snapshots.get(0).getSpec().getSavepoint().getPath());
@@ -178,7 +177,7 @@ public class SessionJobReconcilerTest extends OperatorTestBase {
                     sessionJob.getStatus().getJobStatus().getUpgradeSnapshotReference().getPath());
         } else {
             var snapshots =
-                    FlinkStateSnapshotUtils.getFlinkStateSnapshotsForResource(
+                    TestUtils.getFlinkStateSnapshotsForResource(
                             flinkService.getKubernetesClient(), sessionJob);
             assertThat(snapshots).isNotEmpty();
             assertEquals("savepoint_0", snapshots.get(0).getSpec().getSavepoint().getPath());
@@ -420,7 +419,7 @@ public class SessionJobReconcilerTest extends OperatorTestBase {
                             .getPath());
         } else {
             var snapshots =
-                    FlinkStateSnapshotUtils.getFlinkStateSnapshotsForResource(
+                    TestUtils.getFlinkStateSnapshotsForResource(
                             flinkService.getKubernetesClient(), statefulSessionJob);
             assertThat(snapshots).isNotEmpty();
             assertEquals(

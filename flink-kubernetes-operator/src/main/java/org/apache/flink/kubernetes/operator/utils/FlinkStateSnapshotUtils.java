@@ -33,8 +33,6 @@ import org.apache.flink.kubernetes.operator.api.status.SavepointFormatType;
 import org.apache.flink.kubernetes.operator.api.status.SnapshotTriggerType;
 import org.apache.flink.kubernetes.operator.config.FlinkOperatorConfiguration;
 import org.apache.flink.kubernetes.operator.config.KubernetesOperatorConfigOptions;
-import org.apache.flink.kubernetes.operator.controller.FlinkResourceContext;
-import org.apache.flink.kubernetes.operator.controller.FlinkStateSnapshotContext;
 import org.apache.flink.kubernetes.operator.reconciler.ReconciliationUtils;
 import org.apache.flink.kubernetes.operator.reconciler.SnapshotType;
 
@@ -45,11 +43,7 @@ import org.apache.commons.lang3.StringUtils;
 import javax.annotation.Nullable;
 
 import java.time.Instant;
-import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
-import java.util.List;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 import static org.apache.flink.kubernetes.operator.config.KubernetesOperatorConfigOptions.SNAPSHOT_RESOURCE_ENABLED;
 import static org.apache.flink.kubernetes.operator.reconciler.SnapshotType.CHECKPOINT;
@@ -57,9 +51,6 @@ import static org.apache.flink.kubernetes.operator.reconciler.SnapshotType.SAVEP
 
 /** Utilities class for FlinkStateSnapshot resources. */
 public class FlinkStateSnapshotUtils {
-
-    private static final DateTimeFormatter RESOURCE_NAME_DATE_TIME_FORMATTER =
-            DateTimeFormatter.ofPattern("yyyy-MM-dd-HH-mm");
 
     /**
      * From a snapshot reference, return its snapshot path. If a {@link FlinkStateSnapshot} is
@@ -208,38 +199,38 @@ public class FlinkStateSnapshotUtils {
         return createFlinkStateSnapshot(kubernetesClient, resourceName, snapshotSpec, triggerType);
     }
 
-    public static <CR extends AbstractFlinkResource<?, ?>>
-            List<FlinkStateSnapshot> getFlinkStateSnapshotsForResource(
-                    KubernetesClient kubernetesClient, CR resource) {
-        return kubernetesClient.resources(FlinkStateSnapshot.class).list().getItems().stream()
-                .filter(
-                        s ->
-                                s.getSpec()
-                                        .getJobReference()
-                                        .equals(JobReference.fromFlinkResource(resource)))
-                .collect(Collectors.toList());
-    }
-
-    public static boolean shouldCreateSnapshotResource(
+    /**
+     * Based on job configuration and operator configuration, decide if {@link FlinkStateSnapshot}
+     * resources should be used or not. Operator configuration will disable the usage of the
+     * corresponding CRD was not installed on this Kubernetes cluster.
+     *
+     * @param operatorConfiguration operator config
+     * @param configuration job config
+     * @return true if snapshot resources should be created
+     */
+    public static boolean isSnapshotResourceEnabled(
             FlinkOperatorConfiguration operatorConfiguration, Configuration configuration) {
         return configuration.get(SNAPSHOT_RESOURCE_ENABLED)
                 && operatorConfiguration.isSnapshotResourcesEnabled();
     }
 
+    /**
+     * Return a generated name for a {@link FlinkStateSnapshot} to be created.
+     *
+     * @param snapshotType type of snapshot
+     * @param triggerType trigger type of snapshot
+     * @param referencedResource referenced resource
+     * @return result name
+     */
     public static String getFlinkStateSnapshotName(
             SnapshotType snapshotType,
             SnapshotTriggerType triggerType,
             AbstractFlinkResource<?, ?> referencedResource) {
-        var timeStr =
-                Instant.now()
-                        .atZone(ZoneId.systemDefault())
-                        .format(RESOURCE_NAME_DATE_TIME_FORMATTER);
         return String.format(
-                "%s-%s-%s-%s-%s",
+                "%s-%s-%s-%s",
+                referencedResource.getMetadata().getName(),
                 snapshotType.name().toLowerCase(),
                 triggerType.name().toLowerCase(),
-                referencedResource.getMetadata().getName(),
-                timeStr,
                 UUID.randomUUID());
     }
 
@@ -248,22 +239,26 @@ public class FlinkStateSnapshotUtils {
      * return its reference if snapshot resources are enabled. In other case return a reference
      * containing only the path.
      *
-     * @param ctx resource context
+     * @param conf job configuration
+     * @param operatorConf operator configuration
+     * @param kubernetesClient kubernetes client
+     * @param flinkResource referenced Flink resource
      * @param savepointFormatType savepoint format type
      * @param savepointPath path of savepoint
      * @return reference for snapshot
      */
     public static FlinkStateSnapshotReference createReferenceForUpgradeSavepoint(
-            FlinkResourceContext<?> ctx,
+            Configuration conf,
+            FlinkOperatorConfiguration operatorConf,
+            KubernetesClient kubernetesClient,
+            AbstractFlinkResource<?, ?> flinkResource,
             SavepointFormatType savepointFormatType,
             String savepointPath) {
-        var conf = ctx.getObserveConfig() != null ? ctx.getObserveConfig() : new Configuration();
-
-        if (shouldCreateSnapshotResource(ctx.getOperatorConfig(), conf)) {
+        if (isSnapshotResourceEnabled(operatorConf, conf)) {
             var snapshot =
                     createSavepointResource(
-                            ctx.getKubernetesClient(),
-                            ctx.getResource(),
+                            kubernetesClient,
+                            flinkResource,
                             savepointPath,
                             SnapshotTriggerType.UPGRADE,
                             savepointFormatType,
@@ -279,31 +274,32 @@ public class FlinkStateSnapshotUtils {
     /**
      * Abandons a FlinkStateSnapshot resource if the referenced job is not found or not running.
      *
-     * @param ctx context
+     * @param client Kubernetes client
+     * @param snapshot snapshot
+     * @param secondaryResource associated Flink resource
      * @param eventRecorder event recorder to trigger Kubernetes event
      * @return true if the resource was abandoned
      */
     public static boolean abandonSnapshotIfJobNotRunning(
-            FlinkStateSnapshotContext ctx, EventRecorder eventRecorder) {
-        var resource = ctx.getResource();
-
-        var secondaryResourceOpt = ctx.getSecondaryResource();
-        if (secondaryResourceOpt.isEmpty()) {
+            KubernetesClient client,
+            FlinkStateSnapshot snapshot,
+            @Nullable AbstractFlinkResource<?, ?> secondaryResource,
+            EventRecorder eventRecorder) {
+        if (secondaryResource == null) {
             var message =
                     String.format(
                             "Secondary resource %s for savepoint %s was not found",
-                            resource.getSpec().getJobReference(), resource.getMetadata().getName());
-            abandonSnapshot(ctx, eventRecorder, message);
+                            snapshot.getSpec().getJobReference(), snapshot.getMetadata().getName());
+            abandonSnapshot(client, snapshot, eventRecorder, message);
             return true;
         }
 
-        var secondaryResource = secondaryResourceOpt.get();
         if (!ReconciliationUtils.isJobRunning(secondaryResource.getStatus())) {
             var message =
                     String.format(
                             "Secondary resource %s for savepoint %s is not running",
-                            resource.getSpec().getJobReference(), resource.getMetadata().getName());
-            abandonSnapshot(ctx, eventRecorder, message);
+                            snapshot.getSpec().getJobReference(), snapshot.getMetadata().getName());
+            abandonSnapshot(client, snapshot, eventRecorder, message);
             return true;
         }
 
@@ -313,25 +309,27 @@ public class FlinkStateSnapshotUtils {
     /**
      * Sets the status fields of the snapshot to an abandoned state and triggers a Kubernetes event.
      *
-     * @param ctx context
+     * @param client Kubernetes client
+     * @param snapshot snapshot
      * @param eventRecorder event recorder
      * @param message message of the generated event
      */
     private static void abandonSnapshot(
-            FlinkStateSnapshotContext ctx, EventRecorder eventRecorder, String message) {
-        var resource = ctx.getResource();
-
+            KubernetesClient client,
+            FlinkStateSnapshot snapshot,
+            EventRecorder eventRecorder,
+            String message) {
         eventRecorder.triggerSnapshotEvent(
-                ctx.getResource(),
+                snapshot,
                 EventRecorder.Type.Warning,
                 EventRecorder.Reason.SnapshotAbandoned,
                 EventRecorder.Component.Snapshot,
                 message,
-                ctx.getKubernetesClient());
+                client);
 
-        resource.getStatus().setState(FlinkStateSnapshotState.ABANDONED);
-        resource.getStatus().setPath(null);
-        resource.getStatus().setError(null);
-        resource.getStatus().setResultTimestamp(DateTimeUtils.kubernetes(Instant.now()));
+        snapshot.getStatus().setState(FlinkStateSnapshotState.ABANDONED);
+        snapshot.getStatus().setPath(null);
+        snapshot.getStatus().setError(null);
+        snapshot.getStatus().setResultTimestamp(DateTimeUtils.kubernetes(Instant.now()));
     }
 }

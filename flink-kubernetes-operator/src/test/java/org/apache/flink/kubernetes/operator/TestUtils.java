@@ -23,6 +23,7 @@ import org.apache.flink.kubernetes.operator.api.FlinkDeployment;
 import org.apache.flink.kubernetes.operator.api.FlinkSessionJob;
 import org.apache.flink.kubernetes.operator.api.FlinkStateSnapshot;
 import org.apache.flink.kubernetes.operator.api.spec.FlinkVersion;
+import org.apache.flink.kubernetes.operator.api.spec.JobReference;
 import org.apache.flink.kubernetes.operator.api.spec.UpgradeMode;
 import org.apache.flink.kubernetes.operator.api.status.Checkpoint;
 import org.apache.flink.kubernetes.operator.api.status.JobManagerDeploymentStatus;
@@ -83,6 +84,7 @@ import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -279,6 +281,18 @@ public class TestUtils extends BaseTestUtils {
                 return client;
             }
         };
+    }
+
+    public static <CR extends AbstractFlinkResource<?, ?>>
+            List<FlinkStateSnapshot> getFlinkStateSnapshotsForResource(
+                    KubernetesClient kubernetesClient, CR resource) {
+        return kubernetesClient.resources(FlinkStateSnapshot.class).list().getItems().stream()
+                .filter(
+                        s ->
+                                s.getSpec()
+                                        .getJobReference()
+                                        .equals(JobReference.fromFlinkResource(resource)))
+                .collect(Collectors.toList());
     }
 
     public static String getTestPluginsRootDir(Path temporaryFolder) throws IOException {

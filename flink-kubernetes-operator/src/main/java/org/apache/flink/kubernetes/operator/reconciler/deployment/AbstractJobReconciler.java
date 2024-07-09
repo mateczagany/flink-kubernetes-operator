@@ -347,7 +347,7 @@ public abstract class AbstractJobReconciler<
         var triggerType = triggerOpt.get();
 
         var createSnapshotResource =
-                FlinkStateSnapshotUtils.shouldCreateSnapshotResource(ctx.getOperatorConfig(), conf);
+                FlinkStateSnapshotUtils.isSnapshotResourceEnabled(ctx.getOperatorConfig(), conf);
 
         String jobId = resource.getStatus().getJobStatus().getJobId();
         switch (snapshotType) {

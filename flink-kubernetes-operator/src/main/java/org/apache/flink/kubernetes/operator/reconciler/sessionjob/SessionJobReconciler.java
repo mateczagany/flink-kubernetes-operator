@@ -38,6 +38,7 @@ import org.apache.flink.kubernetes.operator.utils.StatusRecorder;
 
 import io.javaoperatorsdk.operator.api.reconciler.DeleteControl;
 import io.javaoperatorsdk.operator.processing.event.ResourceID;
+import org.apache.commons.lang3.ObjectUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -111,7 +112,11 @@ public class SessionJobReconciler
                 location -> {
                     var snapshotRef =
                             FlinkStateSnapshotUtils.createReferenceForUpgradeSavepoint(
-                                    ctx,
+                                    ObjectUtils.firstNonNull(
+                                            ctx.getObserveConfig(), new Configuration()),
+                                    ctx.getOperatorConfig(),
+                                    ctx.getKubernetesClient(),
+                                    ctx.getResource(),
                                     SavepointFormatType.valueOf(savepointFormatType.name()),
                                     location);
                     ctx.getResource()

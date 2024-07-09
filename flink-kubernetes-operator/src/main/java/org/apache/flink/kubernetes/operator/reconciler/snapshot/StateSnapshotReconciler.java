@@ -72,7 +72,11 @@ public class StateSnapshotReconciler {
             return;
         }
 
-        if (FlinkStateSnapshotUtils.abandonSnapshotIfJobNotRunning(ctx, eventRecorder)) {
+        if (FlinkStateSnapshotUtils.abandonSnapshotIfJobNotRunning(
+                ctx.getKubernetesClient(),
+                ctx.getResource(),
+                ctx.getSecondaryResource().orElse(null),
+                eventRecorder)) {
             return;
         }
 

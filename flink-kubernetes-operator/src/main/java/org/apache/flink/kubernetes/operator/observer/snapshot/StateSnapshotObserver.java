@@ -66,7 +66,11 @@ public class StateSnapshotObserver {
 
         LOG.debug("Observing snapshot state for resource {}...", resourceName);
 
-        if (FlinkStateSnapshotUtils.abandonSnapshotIfJobNotRunning(ctx, eventRecorder)) {
+        if (FlinkStateSnapshotUtils.abandonSnapshotIfJobNotRunning(
+                ctx.getKubernetesClient(),
+                ctx.getResource(),
+                ctx.getSecondaryResource().orElse(null),
+                eventRecorder)) {
             return;
         }
 
