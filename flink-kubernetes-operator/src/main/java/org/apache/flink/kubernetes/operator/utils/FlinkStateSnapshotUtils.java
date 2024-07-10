@@ -290,7 +290,7 @@ public class FlinkStateSnapshotUtils {
                     String.format(
                             "Secondary resource %s for savepoint %s was not found",
                             snapshot.getSpec().getJobReference(), snapshot.getMetadata().getName());
-            abandonSnapshot(client, snapshot, eventRecorder, message);
+            snapshotAbandoned(client, snapshot, eventRecorder, message);
             return true;
         }
 
@@ -299,7 +299,7 @@ public class FlinkStateSnapshotUtils {
                     String.format(
                             "Secondary resource %s for savepoint %s is not running",
                             snapshot.getSpec().getJobReference(), snapshot.getMetadata().getName());
-            abandonSnapshot(client, snapshot, eventRecorder, message);
+            snapshotAbandoned(client, snapshot, eventRecorder, message);
             return true;
         }
 
@@ -307,29 +307,109 @@ public class FlinkStateSnapshotUtils {
     }
 
     /**
-     * Sets the status fields of the snapshot to an abandoned state and triggers a Kubernetes event.
+     * Sets a snapshot's state to {@link
+     * org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotState#ABANDONED}.
      *
-     * @param client Kubernetes client
-     * @param snapshot snapshot
-     * @param eventRecorder event recorder
-     * @param message message of the generated event
+     * @param kubernetesClient kubernetes client
+     * @param eventRecorder event recorder to add event
+     * @param snapshot snapshot resource
+     * @param error message for the event and to add to the resource status
      */
-    private static void abandonSnapshot(
-            KubernetesClient client,
+    private static void snapshotAbandoned(
+            KubernetesClient kubernetesClient,
             FlinkStateSnapshot snapshot,
             EventRecorder eventRecorder,
-            String message) {
+            String error) {
         eventRecorder.triggerSnapshotEvent(
                 snapshot,
                 EventRecorder.Type.Warning,
                 EventRecorder.Reason.SnapshotAbandoned,
                 EventRecorder.Component.Snapshot,
-                message,
-                client);
+                error,
+                kubernetesClient);
 
         snapshot.getStatus().setState(FlinkStateSnapshotState.ABANDONED);
         snapshot.getStatus().setPath(null);
-        snapshot.getStatus().setError(null);
+        snapshot.getStatus().setError(error);
         snapshot.getStatus().setResultTimestamp(DateTimeUtils.kubernetes(Instant.now()));
+    }
+
+    /**
+     * Sets a snapshot's state to {@link
+     * org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotState#FAILED}.
+     *
+     * @param kubernetesClient kubernetes client
+     * @param eventRecorder event recorder to add event
+     * @param snapshot snapshot resource
+     * @param error error message to add to the resource status
+     */
+    public static void snapshotFailed(
+            KubernetesClient kubernetesClient,
+            EventRecorder eventRecorder,
+            FlinkStateSnapshot snapshot,
+            String error) {
+        var reason =
+                snapshot.getSpec().isSavepoint()
+                        ? EventRecorder.Reason.SavepointError
+                        : EventRecorder.Reason.CheckpointError;
+        eventRecorder.triggerSnapshotEvent(
+                snapshot,
+                EventRecorder.Type.Warning,
+                reason,
+                EventRecorder.Component.Snapshot,
+                error,
+                kubernetesClient);
+
+        snapshot.getStatus().setState(FlinkStateSnapshotState.FAILED);
+        snapshot.getStatus().setError(error);
+        snapshot.getStatus().setFailures(snapshot.getStatus().getFailures() + 1);
+        snapshot.getStatus().setResultTimestamp(DateTimeUtils.kubernetes(Instant.now()));
+    }
+
+    /**
+     * Sets a snapshot's state to {@link
+     * org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotState#COMPLETED}.
+     *
+     * @param snapshot snapshot resource
+     * @param location result location
+     * @param setTriggerTimestamp if ture, set the trigger timestamp to current time
+     */
+    public static void snapshotSuccessful(
+            FlinkStateSnapshot snapshot, String location, boolean setTriggerTimestamp) {
+        var time = DateTimeUtils.kubernetes(Instant.now());
+
+        snapshot.getStatus().setState(FlinkStateSnapshotState.COMPLETED);
+        snapshot.getStatus().setPath(location);
+        snapshot.getStatus().setError(null);
+        snapshot.getStatus().setResultTimestamp(time);
+        if (setTriggerTimestamp) {
+            snapshot.getStatus().setTriggerTimestamp(time);
+        }
+    }
+
+    /**
+     * Sets a snapshot's state to {@link
+     * org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotState#IN_PROGRESS}.
+     *
+     * @param snapshot snapshot resource
+     * @param triggerId trigger ID
+     */
+    public static void snapshotInProgress(FlinkStateSnapshot snapshot, String triggerId) {
+        snapshot.getMetadata()
+                .getLabels()
+                .putIfAbsent(CrdConstants.LABEL_SNAPSHOT_TYPE, SnapshotTriggerType.MANUAL.name());
+        snapshot.getStatus().setState(FlinkStateSnapshotState.IN_PROGRESS);
+        snapshot.getStatus().setTriggerId(triggerId);
+        snapshot.getStatus().setTriggerTimestamp(DateTimeUtils.kubernetes(Instant.now()));
+    }
+
+    /**
+     * Sets a snapshot's state to {@link
+     * org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotState#TRIGGER_PENDING}.
+     *
+     * @param snapshot snapshot resource
+     */
+    public static void snapshotTriggerPending(FlinkStateSnapshot snapshot) {
+        snapshot.getStatus().setState(FlinkStateSnapshotState.TRIGGER_PENDING);
     }
 }

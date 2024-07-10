@@ -128,6 +128,7 @@ public class TestingFlinkService extends AbstractFlinkService {
     @Setter private boolean checkpointAvailable = true;
     @Setter private boolean jobManagerReady = true;
     @Setter private boolean deployFailure = false;
+    @Setter private boolean triggerSavepointFailure = false;
     @Setter private boolean disposeSavepointFailure = false;
     @Setter private Runnable sessionJobSubmittedCallback;
     @Setter private PodList podList = new PodList();
@@ -304,7 +305,8 @@ public class TestingFlinkService extends AbstractFlinkService {
             String jobId,
             SnapshotTriggerType triggerType,
             AbstractFlinkResource<?, ?> flinkResource,
-            Configuration conf) {
+            Configuration conf)
+            throws Exception {
         var savepointFormatType =
                 conf.get(KubernetesOperatorConfigOptions.OPERATOR_SAVEPOINT_FORMAT_TYPE);
         var triggerId = triggerSavepoint(jobId, savepointFormatType, null, conf);
@@ -325,7 +327,11 @@ public class TestingFlinkService extends AbstractFlinkService {
             String jobId,
             org.apache.flink.core.execution.SavepointFormatType savepointFormatType,
             String savepointDirectory,
-            Configuration conf) {
+            Configuration conf)
+            throws Exception {
+        if (triggerSavepointFailure) {
+            throw new Exception(SNAPSHOT_ERROR_MESSAGE);
+        }
         var triggerId = "savepoint_trigger_" + savepointTriggerCounter++;
         savepointTriggers.put(triggerId, false);
         return triggerId;

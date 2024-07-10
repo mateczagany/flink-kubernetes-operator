@@ -25,6 +25,7 @@ import org.apache.flink.kubernetes.operator.TestingFlinkService;
 import org.apache.flink.kubernetes.operator.api.CrdConstants;
 import org.apache.flink.kubernetes.operator.api.FlinkDeployment;
 import org.apache.flink.kubernetes.operator.api.FlinkStateSnapshot;
+import org.apache.flink.kubernetes.operator.api.spec.FlinkVersion;
 import org.apache.flink.kubernetes.operator.api.spec.JobReference;
 import org.apache.flink.kubernetes.operator.api.status.CheckpointType;
 import org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotState;
@@ -33,7 +34,6 @@ import org.apache.flink.kubernetes.operator.api.status.JobStatus;
 import org.apache.flink.kubernetes.operator.api.status.SavepointFormatType;
 import org.apache.flink.kubernetes.operator.api.status.SnapshotTriggerType;
 import org.apache.flink.kubernetes.operator.config.FlinkConfigManager;
-import org.apache.flink.kubernetes.operator.exception.ReconciliationException;
 import org.apache.flink.kubernetes.operator.metrics.MetricManager;
 import org.apache.flink.kubernetes.operator.observer.snapshot.StateSnapshotObserver;
 import org.apache.flink.kubernetes.operator.reconciler.ReconciliationUtils;
@@ -50,6 +50,8 @@ import io.javaoperatorsdk.operator.api.reconciler.Context;
 import io.javaoperatorsdk.operator.api.reconciler.DeleteControl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import javax.annotation.Nullable;
 
@@ -58,7 +60,6 @@ import java.util.Optional;
 import java.util.function.BiConsumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /** Test class for {@link FlinkStateSnapshotController}. */
 @EnableKubernetesMockClient(crud = true)
@@ -99,6 +100,25 @@ public class FlinkStateSnapshotControllerTest {
                         new StateSnapshotObserver(ctxFactory, eventRecorder),
                         eventRecorder,
                         statusRecorder);
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {0, 3, 7})
+    public void testReconcileBackoff(int backoffLimit) {
+        var deployment = createDeployment();
+        context = TestUtils.createSnapshotContext(client, deployment);
+        var snapshot = createSavepoint(deployment, false, backoffLimit);
+
+        flinkService.setTriggerSavepointFailure(true);
+
+        for (int i = 0; i < backoffLimit; i++) {
+            controller.reconcile(snapshot, context);
+            assertThat(snapshot.getStatus().getState())
+                    .isEqualTo(FlinkStateSnapshotState.TRIGGER_PENDING);
+        }
+
+        controller.reconcile(snapshot, context);
+        assertThat(snapshot.getStatus().getState()).isEqualTo(FlinkStateSnapshotState.FAILED);
     }
 
     @Test
@@ -157,7 +177,6 @@ public class FlinkStateSnapshotControllerTest {
         var triggerAt = Instant.parse(status.getTriggerTimestamp());
         assertThat(triggerAt).isAfter(createdAt);
         assertThat(status.getPath()).isNull();
-        assertThat(status.getError()).isNull();
         assertThat(status.getTriggerId()).isEqualTo("savepoint_trigger_0");
         assertThat(status.getState()).isEqualTo(FlinkStateSnapshotState.ABANDONED);
         assertThat(statusUpdateCounter.getCount()).isEqualTo(2);
@@ -283,13 +302,11 @@ public class FlinkStateSnapshotControllerTest {
         var snapshot = createSavepoint(deployment);
         snapshot.getSpec().getSavepoint().setPath(null);
 
-        var exception =
-                assertThrows(
-                        ReconciliationException.class,
-                        () -> controller.reconcile(snapshot, context));
-        assertThat(exception.getCause())
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("savepoint path");
+        controller.reconcile(snapshot, context);
+        assertThat(snapshot.getStatus().getState())
+                .isEqualTo(FlinkStateSnapshotState.TRIGGER_PENDING);
+        assertThat(snapshot.getStatus().getPath()).isNull();
+        assertThat(snapshot.getStatus().getError()).contains("savepoint path");
 
         // Add path to spec, it should work then
         snapshot.getSpec().getSavepoint().setPath(SAVEPOINT_PATH);
@@ -301,11 +318,11 @@ public class FlinkStateSnapshotControllerTest {
                 .allSatisfy(
                         event -> {
                             assertThat(event.getReason())
-                                    .isEqualTo(EventRecorder.Reason.SnapshotError.name());
+                                    .isEqualTo(EventRecorder.Reason.SavepointError.name());
                             assertThat(event.getType())
                                     .isEqualTo(EventRecorder.Type.Warning.name());
                             assertThat(event.getMessage())
-                                    .isEqualTo(exception.getCause().getMessage());
+                                    .isEqualTo(snapshot.getStatus().getError());
                         });
     }
 
@@ -337,6 +354,22 @@ public class FlinkStateSnapshotControllerTest {
         assertThat(status.getState()).isEqualTo(FlinkStateSnapshotState.COMPLETED);
         assertThat(status.getPath()).isEqualTo("checkpoint_1");
         assertThat(statusUpdateCounter.getCount()).isEqualTo(2);
+    }
+
+    @Test
+    public void testReconcileNewCheckpointUnsupportedFlinkVersion() {
+        var deployment = createDeployment(FlinkVersion.v1_16);
+        context = TestUtils.createSnapshotContext(client, deployment);
+        var checkpointType = CheckpointType.FULL;
+        var snapshot = createCheckpoint(deployment, checkpointType, 0);
+
+        controller.reconcile(snapshot, context);
+
+        var status = snapshot.getStatus();
+        assertThat(status.getState()).isEqualTo(FlinkStateSnapshotState.FAILED);
+        assertThat(status.getPath()).isNull();
+        assertThat(status.getFailures()).isEqualTo(1);
+        assertThat(status.getError()).contains("requires Flink 1.17+");
     }
 
     @Test
@@ -385,10 +418,7 @@ public class FlinkStateSnapshotControllerTest {
                             assertThat(event.getType())
                                     .isEqualTo(EventRecorder.Type.Warning.name());
                             assertThat(event.getMessage())
-                                    .isEqualTo(
-                                            String.format(
-                                                    "Snapshot failed with error '%s'",
-                                                    TestingFlinkService.SNAPSHOT_ERROR_MESSAGE));
+                                    .isEqualTo(TestingFlinkService.SNAPSHOT_ERROR_MESSAGE);
                         });
     }
 
@@ -438,10 +468,7 @@ public class FlinkStateSnapshotControllerTest {
                             assertThat(event.getType())
                                     .isEqualTo(EventRecorder.Type.Warning.name());
                             assertThat(event.getMessage())
-                                    .isEqualTo(
-                                            String.format(
-                                                    "Snapshot failed with error '%s'",
-                                                    TestingFlinkService.SNAPSHOT_ERROR_MESSAGE));
+                                    .isEqualTo(TestingFlinkService.SNAPSHOT_ERROR_MESSAGE);
                         });
     }
 
@@ -449,6 +476,10 @@ public class FlinkStateSnapshotControllerTest {
     public void testReconcileJobNotFound() {
         var deployment = createDeployment();
         var snapshot = createSavepoint(deployment);
+        var errorMessage =
+                String.format(
+                        "Secondary resource FlinkDeployment/%s for savepoint snapshot-test was not found",
+                        deployment.getMetadata().getName());
 
         // First reconcile will trigger the snapshot.
         controller.reconcile(snapshot, TestUtils.createSnapshotContext(client, deployment));
@@ -465,7 +496,7 @@ public class FlinkStateSnapshotControllerTest {
         status = snapshot.getStatus();
         assertThat(status.getState()).isEqualTo(FlinkStateSnapshotState.ABANDONED);
         assertThat(status.getPath()).isNull();
-        assertThat(status.getError()).isNull();
+        assertThat(status.getError()).isEqualTo(errorMessage);
 
         // observe phase triggers event for snapshot abandoned, then validation will also trigger an
         // event.
@@ -477,11 +508,7 @@ public class FlinkStateSnapshotControllerTest {
                                     .isEqualTo(EventRecorder.Reason.SnapshotAbandoned.name());
                             assertThat(event.getType())
                                     .isEqualTo(EventRecorder.Type.Warning.name());
-                            assertThat(event.getMessage())
-                                    .isEqualTo(
-                                            String.format(
-                                                    "Secondary resource FlinkDeployment/%s for savepoint snapshot-test was not found",
-                                                    deployment.getMetadata().getName()));
+                            assertThat(event.getMessage()).isEqualTo(errorMessage);
                         });
     }
 
@@ -491,13 +518,17 @@ public class FlinkStateSnapshotControllerTest {
         deployment.getStatus().getJobStatus().setState("CANCELED");
         context = TestUtils.createSnapshotContext(client, deployment);
         var snapshot = createSavepoint(deployment);
+        var errorMessage =
+                String.format(
+                        "Secondary resource FlinkDeployment/%s for savepoint snapshot-test is not running",
+                        deployment.getMetadata().getName());
 
         controller.reconcile(snapshot, context);
 
         var status = snapshot.getStatus();
         assertThat(status.getState()).isEqualTo(FlinkStateSnapshotState.ABANDONED);
         assertThat(status.getPath()).isNull();
-        assertThat(status.getError()).isNull();
+        assertThat(status.getError()).isEqualTo(errorMessage);
         assertThat(status.getTriggerId()).isNull();
 
         assertThat(flinkStateSnapshotEventCollector.events)
@@ -508,11 +539,7 @@ public class FlinkStateSnapshotControllerTest {
                                     .isEqualTo(EventRecorder.Reason.SnapshotAbandoned.name());
                             assertThat(event.getType())
                                     .isEqualTo(EventRecorder.Type.Warning.name());
-                            assertThat(event.getMessage())
-                                    .isEqualTo(
-                                            String.format(
-                                                    "Secondary resource FlinkDeployment/%s for savepoint snapshot-test is not running",
-                                                    deployment.getMetadata().getName()));
+                            assertThat(event.getMessage()).isEqualTo(errorMessage);
                         });
     }
 
@@ -553,10 +580,15 @@ public class FlinkStateSnapshotControllerTest {
     }
 
     private FlinkDeployment createDeployment() {
+        return createDeployment(FlinkVersion.v1_19);
+    }
+
+    private FlinkDeployment createDeployment(FlinkVersion flinkVersion) {
         var deployment = TestUtils.buildApplicationCluster();
         deployment
                 .getStatus()
                 .setJobStatus(JobStatus.builder().state("RUNNING").jobId(JOB_ID).build());
+        deployment.getSpec().setFlinkVersion(flinkVersion);
         deployment
                 .getSpec()
                 .getFlinkConfiguration()

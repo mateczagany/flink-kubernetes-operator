@@ -20,13 +20,13 @@ package org.apache.flink.kubernetes.operator.controller;
 import org.apache.flink.kubernetes.operator.api.FlinkStateSnapshot;
 import org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotState;
 import org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotStatus;
-import org.apache.flink.kubernetes.operator.exception.ReconciliationException;
 import org.apache.flink.kubernetes.operator.observer.snapshot.StateSnapshotObserver;
 import org.apache.flink.kubernetes.operator.reconciler.ReconciliationUtils;
 import org.apache.flink.kubernetes.operator.reconciler.snapshot.StateSnapshotReconciler;
 import org.apache.flink.kubernetes.operator.service.FlinkResourceContextFactory;
 import org.apache.flink.kubernetes.operator.utils.EventRecorder;
 import org.apache.flink.kubernetes.operator.utils.EventSourceUtils;
+import org.apache.flink.kubernetes.operator.utils.FlinkStateSnapshotUtils;
 import org.apache.flink.kubernetes.operator.utils.StatusRecorder;
 import org.apache.flink.kubernetes.operator.validation.FlinkResourceValidator;
 
@@ -103,14 +103,9 @@ public class FlinkStateSnapshotController
             statusRecorder.patchAndCacheStatus(flinkStateSnapshot, ctx.getKubernetesClient());
             reconciler.reconcile(ctx);
         } catch (Exception e) {
-            eventRecorder.triggerSnapshotEvent(
-                    flinkStateSnapshot,
-                    EventRecorder.Type.Warning,
-                    EventRecorder.Reason.SnapshotError,
-                    EventRecorder.Component.Snapshot,
-                    e.getMessage(),
-                    josdkContext.getClient());
-            throw new ReconciliationException(e);
+            FlinkStateSnapshotUtils.snapshotFailed(
+                    josdkContext.getClient(), eventRecorder, flinkStateSnapshot, e.getMessage());
+            LOG.error("Failed to reconcile {}", flinkStateSnapshot, e);
         }
 
         var updateControl = getUpdateControl(ctx);
@@ -161,7 +156,7 @@ public class FlinkStateSnapshotController
                         "Snapshot {} failed and will be retried in {} seconds...",
                         resource.getMetadata().getName(),
                         retrySeconds);
-                resource.getStatus().setState(FlinkStateSnapshotState.TRIGGER_PENDING);
+                FlinkStateSnapshotUtils.snapshotTriggerPending(resource);
                 return UpdateControl.<FlinkStateSnapshot>noUpdate()
                         .rescheduleAfter(Duration.ofSeconds(retrySeconds));
             }

@@ -199,7 +199,7 @@ public class SnapshotObserverTest extends OperatorTestBase {
     }
 
     @Test
-    public void testPeriodicSavepoint() {
+    public void testPeriodicSavepoint() throws Exception {
         var conf = new Configuration();
         var deployment = TestUtils.buildApplicationCluster();
         var status = deployment.getStatus();

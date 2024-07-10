@@ -17,20 +17,17 @@
 
 package org.apache.flink.kubernetes.operator.reconciler.snapshot;
 
-import org.apache.flink.autoscaler.utils.DateTimeUtils;
 import org.apache.flink.configuration.CheckpointingOptions;
-import org.apache.flink.kubernetes.operator.api.CrdConstants;
 import org.apache.flink.kubernetes.operator.api.FlinkDeployment;
 import org.apache.flink.kubernetes.operator.api.FlinkStateSnapshot;
 import org.apache.flink.kubernetes.operator.api.spec.FlinkStateSnapshotSpec;
 import org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotState;
-import org.apache.flink.kubernetes.operator.api.status.SnapshotTriggerType;
-import org.apache.flink.kubernetes.operator.controller.FlinkResourceContext;
 import org.apache.flink.kubernetes.operator.controller.FlinkStateSnapshotContext;
 import org.apache.flink.kubernetes.operator.reconciler.ReconciliationUtils;
 import org.apache.flink.kubernetes.operator.service.FlinkResourceContextFactory;
 import org.apache.flink.kubernetes.operator.utils.EventRecorder;
 import org.apache.flink.kubernetes.operator.utils.FlinkStateSnapshotUtils;
+import org.apache.flink.kubernetes.operator.utils.SnapshotUtils;
 import org.apache.flink.util.Preconditions;
 
 import io.javaoperatorsdk.operator.api.reconciler.DeleteControl;
@@ -39,7 +36,6 @@ import org.apache.commons.lang3.ObjectUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.time.Instant;
 import java.util.Optional;
 
 /** The reconciler for the {@link org.apache.flink.kubernetes.operator.api.FlinkStateSnapshot}. */
@@ -64,11 +60,9 @@ public class StateSnapshotReconciler {
             LOG.info(
                     "Snapshot {} is marked as completed in spec, skipping triggering savepoint.",
                     resource.getMetadata().getName());
-            resource.getStatus().setState(FlinkStateSnapshotState.COMPLETED);
-            resource.getStatus().setPath(resource.getSpec().getSavepoint().getPath());
-            var time = DateTimeUtils.kubernetes(Instant.now());
-            resource.getStatus().setTriggerTimestamp(time);
-            resource.getStatus().setResultTimestamp(time);
+
+            FlinkStateSnapshotUtils.snapshotSuccessful(
+                    resource, resource.getSpec().getSavepoint().getPath(), true);
             return;
         }
 
@@ -81,23 +75,14 @@ public class StateSnapshotReconciler {
         }
 
         var jobId = ctx.getSecondaryResource().orElseThrow().getStatus().getJobStatus().getJobId();
-        var ctxFlinkDeployment =
-                ctxFactory.getResourceContext(
-                        ctx.getReferencedJobFlinkDeployment(), ctx.getJosdkContext());
-        var triggerIdOpt =
-                triggerCheckpointOrSavepoint(resource.getSpec(), ctxFlinkDeployment, jobId);
+        var triggerIdOpt = triggerCheckpointOrSavepoint(resource.getSpec(), ctx, jobId);
 
         if (triggerIdOpt.isEmpty()) {
             LOG.warn("Failed to trigger snapshot {}", resource.getMetadata().getName());
             return;
         }
 
-        resource.getMetadata()
-                .getLabels()
-                .putIfAbsent(CrdConstants.LABEL_SNAPSHOT_TYPE, SnapshotTriggerType.MANUAL.name());
-        resource.getStatus().setState(FlinkStateSnapshotState.IN_PROGRESS);
-        resource.getStatus().setTriggerId(triggerIdOpt.get());
-        resource.getStatus().setTriggerTimestamp(DateTimeUtils.kubernetes(Instant.now()));
+        FlinkStateSnapshotUtils.snapshotInProgress(resource, triggerIdOpt.get());
     }
 
     public DeleteControl cleanup(FlinkStateSnapshotContext ctx) throws Exception {
@@ -186,11 +171,12 @@ public class StateSnapshotReconciler {
         }
     }
 
-    private static Optional<String> triggerCheckpointOrSavepoint(
-            FlinkStateSnapshotSpec spec,
-            FlinkResourceContext<FlinkDeployment> flinkDeploymentContext,
-            String jobId)
+    private Optional<String> triggerCheckpointOrSavepoint(
+            FlinkStateSnapshotSpec spec, FlinkStateSnapshotContext ctx, String jobId)
             throws Exception {
+        var flinkDeploymentContext =
+                ctxFactory.getResourceContext(
+                        ctx.getReferencedJobFlinkDeployment(), ctx.getJosdkContext());
         var flinkService = flinkDeploymentContext.getFlinkService();
         var conf =
                 Preconditions.checkNotNull(
@@ -217,13 +203,20 @@ public class StateSnapshotReconciler {
                                     spec.getSavepoint().getFormatType().name()),
                             path,
                             conf));
-        } else {
+        } else if (spec.isCheckpoint()) {
+            if (!SnapshotUtils.isSnapshotTriggeringSupported(conf)) {
+                throw new IllegalArgumentException(
+                        "Manual checkpoint triggering is not supported for this Flink job (requires Flink 1.17+)");
+            }
             return Optional.of(
                     flinkService.triggerCheckpoint(
                             jobId,
                             org.apache.flink.core.execution.CheckpointType.valueOf(
                                     spec.getCheckpoint().getCheckpointType().name()),
                             conf));
+        } else {
+            throw new IllegalArgumentException(
+                    "Snapshot must specify either savepoint or checkpoint spec");
         }
     }
 }

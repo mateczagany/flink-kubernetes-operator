@@ -17,9 +17,7 @@
 
 package org.apache.flink.kubernetes.operator.observer.snapshot;
 
-import org.apache.flink.autoscaler.utils.DateTimeUtils;
 import org.apache.flink.kubernetes.operator.api.FlinkDeployment;
-import org.apache.flink.kubernetes.operator.api.FlinkStateSnapshot;
 import org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotState;
 import org.apache.flink.kubernetes.operator.controller.FlinkResourceContext;
 import org.apache.flink.kubernetes.operator.controller.FlinkStateSnapshotContext;
@@ -29,13 +27,10 @@ import org.apache.flink.kubernetes.operator.service.FlinkResourceContextFactory;
 import org.apache.flink.kubernetes.operator.utils.EventRecorder;
 import org.apache.flink.kubernetes.operator.utils.FlinkStateSnapshotUtils;
 
-import io.fabric8.kubernetes.client.KubernetesClient;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.time.Instant;
 
 /** The observer of {@link org.apache.flink.kubernetes.operator.api.FlinkStateSnapshot}. */
 @RequiredArgsConstructor
@@ -106,10 +101,12 @@ public class StateSnapshotObserver {
                     resourceName,
                     resource.getStatus().getTriggerId());
         } else if (savepointInfo.getError() != null) {
-            snapshotFailed(ctx.getKubernetesClient(), resource, savepointInfo.getError());
+            FlinkStateSnapshotUtils.snapshotFailed(
+                    ctx.getKubernetesClient(), eventRecorder, resource, savepointInfo.getError());
         } else {
             LOG.info("Savepoint {} successful: {}", resourceName, savepointInfo.getLocation());
-            snapshotSuccessful(resource, savepointInfo.getLocation());
+            FlinkStateSnapshotUtils.snapshotSuccessful(
+                    resource, savepointInfo.getLocation(), false);
         }
     }
 
@@ -130,7 +127,8 @@ public class StateSnapshotObserver {
         }
 
         if (checkpointInfo.getError() != null) {
-            snapshotFailed(ctx.getKubernetesClient(), resource, checkpointInfo.getError());
+            FlinkStateSnapshotUtils.snapshotFailed(
+                    ctx.getKubernetesClient(), eventRecorder, resource, checkpointInfo.getError());
         } else {
             LOG.debug(
                     "Checkpoint {} was successful, querying final checkpoint path...",
@@ -146,39 +144,16 @@ public class StateSnapshotObserver {
             if (checkpointStatsResult.isPending()) {
                 return;
             } else if (checkpointStatsResult.getError() != null) {
-                snapshotFailed(
-                        ctx.getKubernetesClient(), resource, checkpointStatsResult.getError());
+                FlinkStateSnapshotUtils.snapshotFailed(
+                        ctx.getKubernetesClient(),
+                        eventRecorder,
+                        resource,
+                        checkpointStatsResult.getError());
             }
 
             LOG.info("Checkpoint {} successful: {}", resourceName, checkpointStatsResult.getPath());
-            snapshotSuccessful(resource, checkpointStatsResult.getPath());
+            FlinkStateSnapshotUtils.snapshotSuccessful(
+                    resource, checkpointStatsResult.getPath(), false);
         }
-    }
-
-    private void snapshotFailed(
-            KubernetesClient kubernetesClient, FlinkStateSnapshot snapshot, String error) {
-        var reason =
-                snapshot.getSpec().isSavepoint()
-                        ? EventRecorder.Reason.SavepointError
-                        : EventRecorder.Reason.CheckpointError;
-        eventRecorder.triggerSnapshotEvent(
-                snapshot,
-                EventRecorder.Type.Warning,
-                reason,
-                EventRecorder.Component.Snapshot,
-                String.format("Snapshot failed with error '%s'", error),
-                kubernetesClient);
-
-        snapshot.getStatus().setState(FlinkStateSnapshotState.FAILED);
-        snapshot.getStatus().setError(error);
-        snapshot.getStatus().setFailures(snapshot.getStatus().getFailures() + 1);
-        snapshot.getStatus().setResultTimestamp(DateTimeUtils.kubernetes(Instant.now()));
-    }
-
-    private void snapshotSuccessful(FlinkStateSnapshot snapshot, String location) {
-        snapshot.getStatus().setState(FlinkStateSnapshotState.COMPLETED);
-        snapshot.getStatus().setPath(location);
-        snapshot.getStatus().setError(null);
-        snapshot.getStatus().setResultTimestamp(DateTimeUtils.kubernetes(Instant.now()));
     }
 }
