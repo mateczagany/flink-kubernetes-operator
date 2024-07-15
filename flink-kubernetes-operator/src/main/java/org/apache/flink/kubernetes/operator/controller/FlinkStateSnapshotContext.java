@@ -23,6 +23,7 @@ import org.apache.flink.kubernetes.operator.api.FlinkDeployment;
 import org.apache.flink.kubernetes.operator.api.FlinkSessionJob;
 import org.apache.flink.kubernetes.operator.api.FlinkStateSnapshot;
 import org.apache.flink.kubernetes.operator.api.spec.JobKind;
+import org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotStatus;
 import org.apache.flink.kubernetes.operator.config.FlinkConfigManager;
 import org.apache.flink.kubernetes.operator.config.FlinkOperatorConfiguration;
 
@@ -39,6 +40,7 @@ import java.util.Optional;
 public class FlinkStateSnapshotContext {
 
     private final FlinkStateSnapshot resource;
+    private final FlinkStateSnapshotStatus originalStatus;
     private final Context<FlinkStateSnapshot> josdkContext;
     private final FlinkConfigManager configManager;
 

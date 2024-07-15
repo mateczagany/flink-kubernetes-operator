@@ -75,7 +75,8 @@ public class FlinkResourceContextFactory {
 
     public FlinkStateSnapshotContext getFlinkStateSnapshotContext(
             FlinkStateSnapshot savepoint, Context<FlinkStateSnapshot> josdkContext) {
-        return new FlinkStateSnapshotContext(savepoint, josdkContext, configManager);
+        return new FlinkStateSnapshotContext(
+                savepoint, savepoint.getStatus().toBuilder().build(), josdkContext, configManager);
     }
 
     public <CR extends AbstractFlinkResource<?, ?>> FlinkResourceContext<CR> getResourceContext(

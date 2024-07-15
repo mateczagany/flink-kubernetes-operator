@@ -21,6 +21,7 @@ import org.apache.flink.kubernetes.operator.api.FlinkDeployment;
 import org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotState;
 import org.apache.flink.kubernetes.operator.controller.FlinkResourceContext;
 import org.apache.flink.kubernetes.operator.controller.FlinkStateSnapshotContext;
+import org.apache.flink.kubernetes.operator.exception.ReconciliationException;
 import org.apache.flink.kubernetes.operator.observer.CheckpointFetchResult;
 import org.apache.flink.kubernetes.operator.observer.SavepointFetchResult;
 import org.apache.flink.kubernetes.operator.service.FlinkResourceContextFactory;
@@ -101,8 +102,7 @@ public class StateSnapshotObserver {
                     resourceName,
                     resource.getStatus().getTriggerId());
         } else if (savepointInfo.getError() != null) {
-            FlinkStateSnapshotUtils.snapshotFailed(
-                    ctx.getKubernetesClient(), eventRecorder, resource, savepointInfo.getError());
+            throw new ReconciliationException(savepointInfo.getError());
         } else {
             LOG.info("Savepoint {} successful: {}", resourceName, savepointInfo.getLocation());
             FlinkStateSnapshotUtils.snapshotSuccessful(
@@ -127,8 +127,7 @@ public class StateSnapshotObserver {
         }
 
         if (checkpointInfo.getError() != null) {
-            FlinkStateSnapshotUtils.snapshotFailed(
-                    ctx.getKubernetesClient(), eventRecorder, resource, checkpointInfo.getError());
+            throw new ReconciliationException(checkpointInfo.getError());
         } else {
             LOG.debug(
                     "Checkpoint {} was successful, querying final checkpoint path...",
@@ -144,11 +143,7 @@ public class StateSnapshotObserver {
             if (checkpointStatsResult.isPending()) {
                 return;
             } else if (checkpointStatsResult.getError() != null) {
-                FlinkStateSnapshotUtils.snapshotFailed(
-                        ctx.getKubernetesClient(),
-                        eventRecorder,
-                        resource,
-                        checkpointStatsResult.getError());
+                throw new ReconciliationException(checkpointStatsResult.getError());
             }
 
             LOG.info("Checkpoint {} successful: {}", resourceName, checkpointStatsResult.getPath());

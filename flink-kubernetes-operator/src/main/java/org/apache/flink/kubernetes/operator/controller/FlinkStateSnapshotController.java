@@ -18,7 +18,6 @@
 package org.apache.flink.kubernetes.operator.controller;
 
 import org.apache.flink.kubernetes.operator.api.FlinkStateSnapshot;
-import org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotState;
 import org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotStatus;
 import org.apache.flink.kubernetes.operator.observer.snapshot.StateSnapshotObserver;
 import org.apache.flink.kubernetes.operator.reconciler.ReconciliationUtils;
@@ -46,6 +45,7 @@ import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 /** Controller that runs the main reconcile loop for {@link FlinkStateSnapshot}. */
@@ -83,34 +83,20 @@ public class FlinkStateSnapshotController
     @Override
     public UpdateControl<FlinkStateSnapshot> reconcile(
             FlinkStateSnapshot flinkStateSnapshot, Context<FlinkStateSnapshot> josdkContext) {
-        statusRecorder.updateStatusFromCache(flinkStateSnapshot);
-
+        // status might be null here
+        flinkStateSnapshot.setStatus(
+                Objects.requireNonNullElseGet(
+                        flinkStateSnapshot.getStatus(), FlinkStateSnapshotStatus::new));
         var ctx = ctxFactory.getFlinkStateSnapshotContext(flinkStateSnapshot, josdkContext);
 
-        // observe
         observer.observe(ctx);
 
-        // validate
-        if (!validateSnapshot(ctx)) {
-            statusRecorder.patchAndCacheStatus(flinkStateSnapshot, ctx.getKubernetesClient());
-            UpdateControl<FlinkStateSnapshot> updateControl = UpdateControl.noUpdate();
-            return updateControl.rescheduleAfter(
-                    ctx.getOperatorConfig().getReconcileInterval().toMillis());
-        }
-
-        // reconcile
-        try {
-            statusRecorder.patchAndCacheStatus(flinkStateSnapshot, ctx.getKubernetesClient());
+        if (validateSnapshot(ctx)) {
             reconciler.reconcile(ctx);
-        } catch (Exception e) {
-            FlinkStateSnapshotUtils.snapshotFailed(
-                    josdkContext.getClient(), eventRecorder, flinkStateSnapshot, e.getMessage());
-            LOG.error("Failed to reconcile {}", flinkStateSnapshot, e);
         }
 
-        var updateControl = getUpdateControl(ctx);
-        statusRecorder.patchAndCacheStatus(flinkStateSnapshot, ctx.getKubernetesClient());
-        return updateControl;
+        notifyListeners(ctx);
+        return getUpdateControl(ctx);
     }
 
     @Override
@@ -136,42 +122,45 @@ public class FlinkStateSnapshotController
                     .rescheduleAfter(ctx.getOperatorConfig().getReconcileInterval().toMillis());
         }
 
-        if (deleteControl.isRemoveFinalizer()) {
-            statusRecorder.removeCachedStatus(flinkStateSnapshot);
-        }
         return deleteControl;
-    }
-
-    private UpdateControl<FlinkStateSnapshot> getUpdateControl(FlinkStateSnapshotContext ctx) {
-        var resource = ctx.getResource();
-        if (FlinkStateSnapshotState.FAILED.equals(resource.getStatus().getState())) {
-            if (resource.getStatus().getFailures() > resource.getSpec().getBackoffLimit()) {
-                LOG.info(
-                        "Snapshot {} failed and won't be retried as failure count exceeded the backoff limit",
-                        resource.getMetadata().getName());
-                return UpdateControl.noUpdate();
-            } else {
-                long retrySeconds = 10L * (1L << resource.getStatus().getFailures() - 1);
-                LOG.info(
-                        "Snapshot {} failed and will be retried in {} seconds...",
-                        resource.getMetadata().getName(),
-                        retrySeconds);
-                FlinkStateSnapshotUtils.snapshotTriggerPending(resource);
-                return UpdateControl.<FlinkStateSnapshot>noUpdate()
-                        .rescheduleAfter(Duration.ofSeconds(retrySeconds));
-            }
-        }
-        return UpdateControl.<FlinkStateSnapshot>noUpdate()
-                .rescheduleAfter(ctx.getOperatorConfig().getReconcileInterval().toMillis());
     }
 
     @Override
     public ErrorStatusUpdateControl<FlinkStateSnapshot> updateErrorStatus(
-            FlinkStateSnapshot flinkStateSnapshot,
-            Context<FlinkStateSnapshot> context,
-            Exception e) {
-        var ctx = ctxFactory.getFlinkStateSnapshotContext(flinkStateSnapshot, context);
-        return ReconciliationUtils.toErrorStatusUpdateControl(ctx, e, statusRecorder);
+            FlinkStateSnapshot resource, Context<FlinkStateSnapshot> context, Exception e) {
+        var ctx = ctxFactory.getFlinkStateSnapshotContext(resource, context);
+        ReconciliationUtils.updateForReconciliationError(ctx, e);
+
+        var reason =
+                resource.getSpec().isSavepoint()
+                        ? EventRecorder.Reason.SavepointError
+                        : EventRecorder.Reason.CheckpointError;
+        eventRecorder.triggerSnapshotEvent(
+                resource,
+                EventRecorder.Type.Warning,
+                reason,
+                EventRecorder.Component.Snapshot,
+                resource.getStatus().getError(),
+                ctx.getKubernetesClient());
+
+        if (resource.getStatus().getFailures() > resource.getSpec().getBackoffLimit()) {
+            LOG.info(
+                    "Snapshot {} failed and won't be retried as failure count exceeded the backoff limit",
+                    resource.getMetadata().getName());
+            notifyListeners(ctx);
+            return ErrorStatusUpdateControl.patchStatus(resource).withNoRetry();
+        }
+
+        long retrySeconds = 10L * (1L << resource.getStatus().getFailures() - 1);
+        LOG.info(
+                "Snapshot {} failed and will be retried in {} seconds...",
+                resource.getMetadata().getName(),
+                retrySeconds);
+        FlinkStateSnapshotUtils.snapshotTriggerPending(resource);
+
+        notifyListeners(ctx);
+        return ErrorStatusUpdateControl.patchStatus(resource)
+                .rescheduleAfter(Duration.ofSeconds(retrySeconds));
     }
 
     @Override
@@ -179,6 +168,31 @@ public class FlinkStateSnapshotController
             EventSourceContext<FlinkStateSnapshot> context) {
         return EventSourceInitializer.nameEventSources(
                 EventSourceUtils.getFlinkStateSnapshotInformerEventSources(context));
+    }
+
+    private UpdateControl<FlinkStateSnapshot> getUpdateControl(FlinkStateSnapshotContext ctx) {
+        var resource = ctx.getResource();
+        UpdateControl<FlinkStateSnapshot> updateControl;
+        if (!ctx.getOriginalStatus().equals(resource.getStatus())) {
+            updateControl = UpdateControl.patchStatus(resource);
+        } else {
+            updateControl = UpdateControl.noUpdate();
+        }
+
+        switch (resource.getStatus().getState()) {
+            case COMPLETED:
+            case ABANDONED:
+                return updateControl;
+            default:
+                return updateControl.rescheduleAfter(
+                        ctx.getOperatorConfig().getReconcileInterval().toMillis());
+        }
+    }
+
+    private void notifyListeners(FlinkStateSnapshotContext ctx) {
+        if (!ctx.getOriginalStatus().equals(ctx.getResource().getStatus())) {
+            statusRecorder.notifyListeners(ctx.getResource(), ctx.getOriginalStatus());
+        }
     }
 
     private boolean validateSnapshot(FlinkStateSnapshotContext ctx) {

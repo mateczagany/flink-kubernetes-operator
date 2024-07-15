@@ -29,6 +29,7 @@ import org.apache.flink.kubernetes.operator.api.spec.JobKind;
 import org.apache.flink.kubernetes.operator.api.spec.JobReference;
 import org.apache.flink.kubernetes.operator.api.status.CheckpointType;
 import org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotState;
+import org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotStatus;
 import org.apache.flink.kubernetes.operator.api.status.JobManagerDeploymentStatus;
 import org.apache.flink.kubernetes.operator.api.status.SavepointFormatType;
 import org.apache.flink.kubernetes.operator.api.status.SnapshotTriggerType;
@@ -415,7 +416,7 @@ public class FlinkStateSnapshotUtilsTest {
         var snapshot =
                 TestUtils.buildFlinkStateSnapshotSavepoint(
                         SAVEPOINT_NAME, NAMESPACE, SAVEPOINT_PATH, false, jobReference);
-        snapshot.getStatus().setState(snapshotState);
+        snapshot.setStatus(FlinkStateSnapshotStatus.builder().state(snapshotState).build());
 
         if (FlinkStateSnapshotState.COMPLETED.equals(snapshotState)) {
             snapshot.getStatus().setPath(SAVEPOINT_PATH);

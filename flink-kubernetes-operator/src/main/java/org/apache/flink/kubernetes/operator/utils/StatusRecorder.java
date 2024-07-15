@@ -68,6 +68,10 @@ public class StatusRecorder<CR extends CustomResource<?, STATUS>, STATUS> {
         this.metricManager = metricManager;
     }
 
+    public void notifyListeners(CR resource, STATUS prevStatus) {
+        statusUpdateListener.accept(resource, prevStatus);
+    }
+
     /**
      * Update the status of the provided kubernetes resource on the k8s cluster. We use patch
      * together with null resourceVersion to try to guarantee that the status update succeeds even

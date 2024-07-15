@@ -345,38 +345,6 @@ public class FlinkStateSnapshotUtils {
 
     /**
      * Sets a snapshot's state to {@link
-     * org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotState#FAILED}.
-     *
-     * @param kubernetesClient kubernetes client
-     * @param eventRecorder event recorder to add event
-     * @param snapshot snapshot resource
-     * @param error error message to add to the resource status
-     */
-    public static void snapshotFailed(
-            KubernetesClient kubernetesClient,
-            EventRecorder eventRecorder,
-            FlinkStateSnapshot snapshot,
-            String error) {
-        var reason =
-                snapshot.getSpec().isSavepoint()
-                        ? EventRecorder.Reason.SavepointError
-                        : EventRecorder.Reason.CheckpointError;
-        eventRecorder.triggerSnapshotEvent(
-                snapshot,
-                EventRecorder.Type.Warning,
-                reason,
-                EventRecorder.Component.Snapshot,
-                error,
-                kubernetesClient);
-
-        snapshot.getStatus().setState(FlinkStateSnapshotState.FAILED);
-        snapshot.getStatus().setError(error);
-        snapshot.getStatus().setFailures(snapshot.getStatus().getFailures() + 1);
-        snapshot.getStatus().setResultTimestamp(DateTimeUtils.kubernetes(Instant.now()));
-    }
-
-    /**
-     * Sets a snapshot's state to {@link
      * org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotState#COMPLETED}.
      *
      * @param snapshot snapshot resource

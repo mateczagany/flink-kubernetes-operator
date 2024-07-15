@@ -18,7 +18,6 @@
 package org.apache.flink.kubernetes.operator.api;
 
 import org.apache.flink.annotation.Experimental;
-import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.kubernetes.operator.api.spec.FlinkStateSnapshotSpec;
 import org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotStatus;
 
@@ -40,12 +39,6 @@ import io.fabric8.kubernetes.model.annotation.Version;
 public class FlinkStateSnapshot
         extends CustomResource<FlinkStateSnapshotSpec, FlinkStateSnapshotStatus>
         implements Namespaced {
-
-    @VisibleForTesting
-    @Override
-    public FlinkStateSnapshotStatus initStatus() {
-        return new FlinkStateSnapshotStatus();
-    }
 
     @Override
     public FlinkStateSnapshotSpec initSpec() {

@@ -23,6 +23,7 @@ import org.apache.flink.kubernetes.operator.api.FlinkStateSnapshot;
 import org.apache.flink.kubernetes.operator.api.spec.FlinkStateSnapshotSpec;
 import org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotState;
 import org.apache.flink.kubernetes.operator.controller.FlinkStateSnapshotContext;
+import org.apache.flink.kubernetes.operator.exception.ReconciliationException;
 import org.apache.flink.kubernetes.operator.reconciler.ReconciliationUtils;
 import org.apache.flink.kubernetes.operator.service.FlinkResourceContextFactory;
 import org.apache.flink.kubernetes.operator.utils.EventRecorder;
@@ -47,7 +48,7 @@ public class StateSnapshotReconciler {
     private final FlinkResourceContextFactory ctxFactory;
     private final EventRecorder eventRecorder;
 
-    public void reconcile(FlinkStateSnapshotContext ctx) throws Exception {
+    public void reconcile(FlinkStateSnapshotContext ctx) {
         var resource = ctx.getResource();
 
         var savepointState = resource.getStatus().getState();
@@ -75,7 +76,14 @@ public class StateSnapshotReconciler {
         }
 
         var jobId = ctx.getSecondaryResource().orElseThrow().getStatus().getJobStatus().getJobId();
-        var triggerIdOpt = triggerCheckpointOrSavepoint(resource.getSpec(), ctx, jobId);
+
+        Optional<String> triggerIdOpt;
+        try {
+            triggerIdOpt = triggerCheckpointOrSavepoint(resource.getSpec(), ctx, jobId);
+        } catch (Exception e) {
+            LOG.error("Failed to trigger snapshot for resource {}", ctx.getResource(), e);
+            throw new ReconciliationException(e);
+        }
 
         if (triggerIdOpt.isEmpty()) {
             LOG.warn("Failed to trigger snapshot {}", resource.getMetadata().getName());
@@ -87,6 +95,7 @@ public class StateSnapshotReconciler {
 
     public DeleteControl cleanup(FlinkStateSnapshotContext ctx) throws Exception {
         var resource = ctx.getResource();
+        var state = resource.getStatus().getState();
         var resourceName = resource.getMetadata().getName();
         LOG.info("Cleaning up resource {}...", resourceName);
 
@@ -101,18 +110,13 @@ public class StateSnapshotReconciler {
             return DeleteControl.defaultDelete();
         }
 
-        var josdkContext = ctxFactory.getFlinkStateSnapshotContext(resource, ctx.getJosdkContext());
-        var state = resource.getStatus().getState();
-        var flinkDeployment = getFlinkDeployment(ctx);
-
         switch (state) {
             case IN_PROGRESS:
                 LOG.info(
                         "Cannot delete resource {} yet as savepoint is still in progress...",
                         resourceName);
                 return DeleteControl.noFinalizerRemoval()
-                        .rescheduleAfter(
-                                josdkContext.getOperatorConfig().getReconcileInterval().toMillis());
+                        .rescheduleAfter(ctx.getOperatorConfig().getReconcileInterval().toMillis());
             case FAILED:
                 LOG.info(
                         "Savepoint was not successful, cleaning up resource {} without disposal...",
@@ -124,7 +128,8 @@ public class StateSnapshotReconciler {
                         resourceName);
                 return DeleteControl.defaultDelete();
             case COMPLETED:
-                return handleSnapshotCleanup(resource, flinkDeployment, josdkContext);
+                var flinkDeployment = getFlinkDeployment(ctx);
+                return handleSnapshotCleanup(resource, flinkDeployment, ctx);
             default:
                 LOG.info("Unknown savepoint state for {}: {}", resourceName, state);
                 return DeleteControl.defaultDelete();

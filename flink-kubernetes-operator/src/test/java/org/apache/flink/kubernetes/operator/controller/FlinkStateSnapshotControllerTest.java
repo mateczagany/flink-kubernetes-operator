@@ -34,6 +34,7 @@ import org.apache.flink.kubernetes.operator.api.status.JobStatus;
 import org.apache.flink.kubernetes.operator.api.status.SavepointFormatType;
 import org.apache.flink.kubernetes.operator.api.status.SnapshotTriggerType;
 import org.apache.flink.kubernetes.operator.config.FlinkConfigManager;
+import org.apache.flink.kubernetes.operator.exception.ReconciliationException;
 import org.apache.flink.kubernetes.operator.metrics.MetricManager;
 import org.apache.flink.kubernetes.operator.observer.snapshot.StateSnapshotObserver;
 import org.apache.flink.kubernetes.operator.reconciler.ReconciliationUtils;
@@ -60,6 +61,7 @@ import java.util.Optional;
 import java.util.function.BiConsumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /** Test class for {@link FlinkStateSnapshotController}. */
 @EnableKubernetesMockClient(crud = true)
@@ -108,16 +110,17 @@ public class FlinkStateSnapshotControllerTest {
         var deployment = createDeployment();
         context = TestUtils.createSnapshotContext(client, deployment);
         var snapshot = createSavepoint(deployment, false, backoffLimit);
+        snapshot.setStatus(new FlinkStateSnapshotStatus());
 
         flinkService.setTriggerSavepointFailure(true);
 
         for (int i = 0; i < backoffLimit; i++) {
-            controller.reconcile(snapshot, context);
+            controller.updateErrorStatus(snapshot, context, new Exception());
             assertThat(snapshot.getStatus().getState())
                     .isEqualTo(FlinkStateSnapshotState.TRIGGER_PENDING);
         }
 
-        controller.reconcile(snapshot, context);
+        controller.updateErrorStatus(snapshot, context, new Exception());
         assertThat(snapshot.getStatus().getState()).isEqualTo(FlinkStateSnapshotState.FAILED);
     }
 
@@ -221,6 +224,7 @@ public class FlinkStateSnapshotControllerTest {
         var deployment = createDeployment();
         context = TestUtils.createSnapshotContext(client, deployment);
         var snapshot = createSavepoint(deployment);
+        snapshot.setStatus(new FlinkStateSnapshotStatus());
 
         snapshot.getSpec().getSavepoint().setDisposeOnDelete(true);
         snapshot.getStatus().setState(FlinkStateSnapshotState.TRIGGER_PENDING);
@@ -303,7 +307,11 @@ public class FlinkStateSnapshotControllerTest {
         var snapshot = createSavepoint(deployment);
         snapshot.getSpec().getSavepoint().setPath(null);
 
-        controller.reconcile(snapshot, context);
+        var ex =
+                assertThrows(
+                        ReconciliationException.class,
+                        () -> controller.reconcile(snapshot, context));
+        controller.updateErrorStatus(snapshot, context, ex);
         assertThat(snapshot.getStatus().getState())
                 .isEqualTo(FlinkStateSnapshotState.TRIGGER_PENDING);
         assertThat(snapshot.getStatus().getPath()).isNull();
@@ -364,7 +372,11 @@ public class FlinkStateSnapshotControllerTest {
         var checkpointType = CheckpointType.FULL;
         var snapshot = createCheckpoint(deployment, checkpointType, 0);
 
-        controller.reconcile(snapshot, context);
+        var ex =
+                assertThrows(
+                        ReconciliationException.class,
+                        () -> controller.reconcile(snapshot, context));
+        controller.updateErrorStatus(snapshot, context, ex);
 
         var status = snapshot.getStatus();
         assertThat(status.getState()).isEqualTo(FlinkStateSnapshotState.FAILED);
@@ -383,7 +395,11 @@ public class FlinkStateSnapshotControllerTest {
 
         // Remove savepoint triggers so that fetching the savepoint will result in an error
         flinkService.getSavepointTriggers().clear();
-        controller.reconcile(snapshot, context);
+        var ex =
+                assertThrows(
+                        ReconciliationException.class,
+                        () -> controller.reconcile(snapshot, context));
+        controller.updateErrorStatus(snapshot, context, ex);
 
         // Backoff limit not reached, we retry in the next reconcile loop
         var status = snapshot.getStatus();
@@ -391,14 +407,18 @@ public class FlinkStateSnapshotControllerTest {
         var triggerAt = Instant.parse(status.getTriggerTimestamp());
         assertThat(triggerAt).isAfter(createdAt);
         assertThat(status.getState()).isEqualTo(FlinkStateSnapshotState.TRIGGER_PENDING);
-        assertThat(status.getError()).isEqualTo(TestingFlinkService.SNAPSHOT_ERROR_MESSAGE);
+        assertThat(status.getError()).contains(TestingFlinkService.SNAPSHOT_ERROR_MESSAGE);
 
         controller.reconcile(snapshot, context);
         assertThat(snapshot.getStatus().getState()).isEqualTo(FlinkStateSnapshotState.IN_PROGRESS);
         flinkService.getSavepointTriggers().clear();
 
         // Backoff limit reached, we have FAILED state
-        controller.reconcile(snapshot, context);
+        ex =
+                assertThrows(
+                        ReconciliationException.class,
+                        () -> controller.reconcile(snapshot, context));
+        controller.updateErrorStatus(snapshot, context, ex);
         status = snapshot.getStatus();
         createdAt = Instant.parse(snapshot.getMetadata().getCreationTimestamp());
         triggerAt = Instant.parse(status.getTriggerTimestamp());
@@ -407,9 +427,9 @@ public class FlinkStateSnapshotControllerTest {
         assertThat(status.getState()).isEqualTo(FlinkStateSnapshotState.FAILED);
         assertThat(status.getPath()).isNull();
         assertThat(status.getFailures()).isEqualTo(2);
-        assertThat(status.getError()).isEqualTo(TestingFlinkService.SNAPSHOT_ERROR_MESSAGE);
+        assertThat(status.getError()).contains(TestingFlinkService.SNAPSHOT_ERROR_MESSAGE);
 
-        assertThat(statusUpdateCounter.getCount()).isEqualTo(5);
+        assertThat(statusUpdateCounter.getCount()).isEqualTo(4);
         assertThat(flinkStateSnapshotEventCollector.events)
                 .hasSize(2)
                 .allSatisfy(
@@ -419,7 +439,7 @@ public class FlinkStateSnapshotControllerTest {
                             assertThat(event.getType())
                                     .isEqualTo(EventRecorder.Type.Warning.name());
                             assertThat(event.getMessage())
-                                    .isEqualTo(TestingFlinkService.SNAPSHOT_ERROR_MESSAGE);
+                                    .contains(TestingFlinkService.SNAPSHOT_ERROR_MESSAGE);
                         });
     }
 
@@ -433,7 +453,11 @@ public class FlinkStateSnapshotControllerTest {
 
         // Remove savepoint triggers so that fetching the savepoint will result in an error
         flinkService.getCheckpointTriggers().clear();
-        controller.reconcile(snapshot, context);
+        var ex =
+                assertThrows(
+                        ReconciliationException.class,
+                        () -> controller.reconcile(snapshot, context));
+        controller.updateErrorStatus(snapshot, context, ex);
 
         // Backoff limit not reached, we retry in the next reconcile loop
         var status = snapshot.getStatus();
@@ -441,14 +465,19 @@ public class FlinkStateSnapshotControllerTest {
         var triggerAt = Instant.parse(status.getTriggerTimestamp());
         assertThat(triggerAt).isAfter(createdAt);
         assertThat(status.getState()).isEqualTo(FlinkStateSnapshotState.TRIGGER_PENDING);
-        assertThat(status.getError()).isEqualTo(TestingFlinkService.SNAPSHOT_ERROR_MESSAGE);
+        assertThat(status.getError()).contains(TestingFlinkService.SNAPSHOT_ERROR_MESSAGE);
 
         controller.reconcile(snapshot, context);
         assertThat(snapshot.getStatus().getState()).isEqualTo(FlinkStateSnapshotState.IN_PROGRESS);
         flinkService.getCheckpointTriggers().clear();
 
         // Backoff limit reached, we have FAILED state
-        controller.reconcile(snapshot, context);
+        ex =
+                assertThrows(
+                        ReconciliationException.class,
+                        () -> controller.reconcile(snapshot, context));
+        controller.updateErrorStatus(snapshot, context, ex);
+
         status = snapshot.getStatus();
         createdAt = Instant.parse(snapshot.getMetadata().getCreationTimestamp());
         triggerAt = Instant.parse(status.getTriggerTimestamp());
@@ -457,9 +486,9 @@ public class FlinkStateSnapshotControllerTest {
         assertThat(status.getState()).isEqualTo(FlinkStateSnapshotState.FAILED);
         assertThat(status.getPath()).isNull();
         assertThat(status.getFailures()).isEqualTo(2);
-        assertThat(status.getError()).isEqualTo(TestingFlinkService.SNAPSHOT_ERROR_MESSAGE);
+        assertThat(status.getError()).contains(TestingFlinkService.SNAPSHOT_ERROR_MESSAGE);
 
-        assertThat(statusUpdateCounter.getCount()).isEqualTo(5);
+        assertThat(statusUpdateCounter.getCount()).isEqualTo(4);
         assertThat(flinkStateSnapshotEventCollector.events)
                 .hasSize(2)
                 .allSatisfy(
@@ -469,7 +498,7 @@ public class FlinkStateSnapshotControllerTest {
                             assertThat(event.getType())
                                     .isEqualTo(EventRecorder.Type.Warning.name());
                             assertThat(event.getMessage())
-                                    .isEqualTo(TestingFlinkService.SNAPSHOT_ERROR_MESSAGE);
+                                    .contains(TestingFlinkService.SNAPSHOT_ERROR_MESSAGE);
                         });
     }
 
@@ -605,7 +634,7 @@ public class FlinkStateSnapshotControllerTest {
         private int counter;
 
         @Override
-        public void accept(FlinkStateSnapshot resource, FlinkStateSnapshotStatus status) {
+        public void accept(FlinkStateSnapshot resource, FlinkStateSnapshotStatus prevStatus) {
             counter++;
         }
 
