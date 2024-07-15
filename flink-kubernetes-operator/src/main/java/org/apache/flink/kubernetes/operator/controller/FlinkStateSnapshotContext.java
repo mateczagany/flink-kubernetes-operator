@@ -60,6 +60,10 @@ public class FlinkStateSnapshotContext {
 
     public Optional<AbstractFlinkResource<?, ?>> getSecondaryResource() {
         var jobRef = getResource().getSpec().getJobReference();
+        if (jobRef == null) {
+            return Optional.empty();
+        }
+
         if (JobKind.FLINK_DEPLOYMENT.equals(jobRef.getKind())) {
             return getJosdkContext().getSecondaryResource(FlinkDeployment.class).map(r -> r);
         } else if (JobKind.FLINK_SESSION_JOB.equals(jobRef.getKind())) {

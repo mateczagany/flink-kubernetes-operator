@@ -73,12 +73,21 @@ public class FlinkStateSnapshotUtils {
 
         FlinkStateSnapshot result;
         if (snapshotRef.getName() != null) {
-            result =
-                    kubernetesClient
-                            .resources(FlinkStateSnapshot.class)
-                            .inNamespace(snapshotRef.getNamespace())
-                            .withName(snapshotRef.getName())
-                            .get();
+            var namespace = snapshotRef.getNamespace();
+            if (namespace == null) {
+                result =
+                        kubernetesClient
+                                .resources(FlinkStateSnapshot.class)
+                                .withName(snapshotRef.getName())
+                                .get();
+            } else {
+                result =
+                        kubernetesClient
+                                .resources(FlinkStateSnapshot.class)
+                                .inNamespace(namespace)
+                                .withName(snapshotRef.getName())
+                                .get();
+            }
         } else {
             result =
                     kubernetesClient

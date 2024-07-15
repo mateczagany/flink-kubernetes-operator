@@ -108,7 +108,7 @@ This serves as a full reference for FlinkDeployment and FlinkSessionJob custom r
 
 | Parameter | Type | Docs |
 | ----------| ---- | ---- |
-| jobReference | org.apache.flink.kubernetes.operator.api.spec.JobReference | Source to take a snapshot of. |
+| jobReference | org.apache.flink.kubernetes.operator.api.spec.JobReference | Source to take a snapshot of. Not required if it's a savepoint and alreadyExists is true. |
 | savepoint | org.apache.flink.kubernetes.operator.api.spec.SavepointSpec | Spec in case of savepoint. |
 | checkpoint | org.apache.flink.kubernetes.operator.api.spec.CheckpointSpec | Spec in case of checkpoint. |
 | backoffLimit | int | Maximum number of retries before the snapshot is considered as failed. Set to -1 for unlimited or 0 for no retries. |

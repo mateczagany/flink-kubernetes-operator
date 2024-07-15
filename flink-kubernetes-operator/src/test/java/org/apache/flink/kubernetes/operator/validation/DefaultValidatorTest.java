@@ -1060,6 +1060,17 @@ public class DefaultValidatorTest {
                 },
                 "Exactly one of checkpoint or savepoint configurations has to be set.");
 
+        testStateSnapshotValidateWithModifier(
+                snapshot -> snapshot.getSpec().setJobReference(null),
+                "Job reference must be supplied for this snapshot");
+
+        testStateSnapshotValidateWithModifier(
+                snapshot -> {
+                    snapshot.getSpec().setJobReference(null);
+                    snapshot.getSpec().getSavepoint().setAlreadyExists(true);
+                },
+                null);
+
         var refName = "does-not-exist";
         var snapshot =
                 TestUtils.buildFlinkStateSnapshotSavepoint(

@@ -96,6 +96,10 @@ public class StateSnapshotReconciler {
         if (!resource.getSpec().getSavepoint().getDisposeOnDelete()) {
             return DeleteControl.defaultDelete();
         }
+        if (resource.getSpec().getJobReference() == null
+                || resource.getSpec().getJobReference().getName() == null) {
+            return DeleteControl.defaultDelete();
+        }
 
         var josdkContext = ctxFactory.getFlinkStateSnapshotContext(resource, ctx.getJosdkContext());
         var state = resource.getStatus().getState();

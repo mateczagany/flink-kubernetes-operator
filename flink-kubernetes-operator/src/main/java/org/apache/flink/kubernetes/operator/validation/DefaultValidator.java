@@ -501,21 +501,28 @@ public class DefaultValidator implements FlinkResourceValidator {
     @Override
     public Optional<String> validateStateSnapshot(
             FlinkStateSnapshot savepoint, Optional<AbstractFlinkResource<?, ?>> target) {
-        var namespace = savepoint.getMetadata().getNamespace();
         var spec = savepoint.getSpec();
-        var targetName = spec.getJobReference().toString();
-
-        if (target.isEmpty()) {
-            return Optional.of(
-                    String.format(
-                            "Target for snapshot (%s) in namespace %s was not found",
-                            targetName, namespace));
-        }
 
         if ((!spec.isSavepoint() && !spec.isCheckpoint())
                 || (spec.isSavepoint() && spec.isCheckpoint())) {
             return Optional.of(
                     "Exactly one of checkpoint or savepoint configurations has to be set.");
+        }
+
+        if (spec.isSavepoint() && spec.getSavepoint().getAlreadyExists()) {
+            return Optional.empty();
+        }
+
+        // The remaining checks are not required if savepoint already exists.
+        if (spec.getJobReference() == null) {
+            return Optional.of("Job reference must be supplied for this snapshot");
+        }
+
+        if (target.isEmpty()) {
+            return Optional.of(
+                    String.format(
+                            "Target for snapshot (%s) in namespace %s was not found",
+                            spec.getJobReference(), savepoint.getMetadata().getNamespace()));
         }
 
         return Optional.empty();

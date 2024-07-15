@@ -34,7 +34,7 @@ import lombok.experimental.SuperBuilder;
 @SuperBuilder
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class FlinkStateSnapshotSpec implements Diffable<FlinkStateSnapshotSpec> {
-    /** Source to take a snapshot of. */
+    /** Source to take a snapshot of. Not required if it's a savepoint and alreadyExists is true. */
     private JobReference jobReference;
 
     /** Spec in case of savepoint. */

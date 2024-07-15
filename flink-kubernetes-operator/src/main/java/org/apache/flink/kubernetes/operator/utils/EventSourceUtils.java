@@ -34,6 +34,7 @@ import io.javaoperatorsdk.operator.processing.event.source.PrimaryToSecondaryMap
 import io.javaoperatorsdk.operator.processing.event.source.informer.InformerEventSource;
 import io.javaoperatorsdk.operator.processing.event.source.informer.Mappers;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -154,11 +155,16 @@ public class EventSourceUtils {
         context.getPrimaryCache()
                 .addIndexer(
                         FLINK_STATE_SNAPSHOT_IDX,
-                        savepoint ->
-                                List.of(
-                                        indexKey(
-                                                savepoint.getSpec().getJobReference().toString(),
-                                                savepoint.getMetadata().getNamespace())));
+                        savepoint -> {
+                            if (savepoint.getSpec().getJobReference() == null
+                                    || savepoint.getSpec().getJobReference().getName() == null) {
+                                return Collections.emptyList();
+                            }
+                            return List.of(
+                                    indexKey(
+                                            savepoint.getSpec().getJobReference().toString(),
+                                            savepoint.getMetadata().getNamespace()));
+                        });
 
         InformerConfiguration<FlinkSessionJob> configurationFlinkSessionJob =
                 InformerConfiguration.from(FlinkSessionJob.class, context)

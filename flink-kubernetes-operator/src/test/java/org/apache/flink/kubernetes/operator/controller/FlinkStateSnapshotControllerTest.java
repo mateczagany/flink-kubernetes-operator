@@ -121,11 +121,12 @@ public class FlinkStateSnapshotControllerTest {
         assertThat(snapshot.getStatus().getState()).isEqualTo(FlinkStateSnapshotState.FAILED);
     }
 
-    @Test
-    public void testReconcileSavepointAlreadyExists() {
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    public void testReconcileSavepointAlreadyExists(boolean jobReferenced) {
         var deployment = createDeployment();
-        context = TestUtils.createSnapshotContext(client, deployment);
-        var snapshot = createSavepoint(deployment, true);
+        context = TestUtils.createSnapshotContext(client, jobReferenced ? deployment : null);
+        var snapshot = createSavepoint(jobReferenced ? deployment : null, true);
 
         controller.reconcile(snapshot, context);
 
@@ -559,7 +560,7 @@ public class FlinkStateSnapshotControllerTest {
                         "test",
                         SAVEPOINT_PATH,
                         alreadyExists,
-                        JobReference.fromFlinkResource(deployment));
+                        deployment == null ? null : JobReference.fromFlinkResource(deployment));
         snapshot.getSpec().setBackoffLimit(backoffLimit);
         snapshot.getSpec().getSavepoint().setFormatType(SavepointFormatType.CANONICAL);
         client.resource(snapshot).create();
