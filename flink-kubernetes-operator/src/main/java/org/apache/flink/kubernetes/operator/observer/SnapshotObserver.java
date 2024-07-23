@@ -294,7 +294,7 @@ public class SnapshotObserver<
                                             FlinkStateSnapshotReference.fromPath(
                                                     snapshot.getLocation())));
         } catch (Exception e) {
-            LOG.error("Could not observe latest savepoint information.", e);
+            LOG.error("Could not observe latest checkpoint information.", e);
             throw new ReconciliationException(e);
         }
     }

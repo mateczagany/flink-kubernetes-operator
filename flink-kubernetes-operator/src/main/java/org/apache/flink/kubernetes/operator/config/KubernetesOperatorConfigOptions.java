@@ -305,7 +305,7 @@ public class KubernetesOperatorConfigOptions {
                     .withDescription(
                             "Create new FlinkStateSnapshot resources for storing snapshots. "
                                     + "Disable if you wish to use the deprecated mode and save snapshot results to "
-                                    + "FlinkDeployment/FlinkSessionJob status fields. The Operator will fallback to the "
+                                    + "FlinkDeployment/FlinkSessionJob status fields. The Operator will fallback to "
                                     + "legacy mode during runtime if the CRD is not found, "
                                     + "even if this value is true.");
 

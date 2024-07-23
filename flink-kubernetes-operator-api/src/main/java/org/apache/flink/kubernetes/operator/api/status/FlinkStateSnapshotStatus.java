@@ -38,7 +38,7 @@ public class FlinkStateSnapshotStatus implements Diffable<FlinkStateSnapshotStat
 
     /** Current state of the snapshot. */
     @PrinterColumn(name = "Snapshot State")
-    private FlinkStateSnapshotState state = FlinkStateSnapshotState.TRIGGER_PENDING;
+    private State state = State.TRIGGER_PENDING;
 
     /** Trigger ID of the snapshot. */
     private String triggerId;
@@ -59,4 +59,23 @@ public class FlinkStateSnapshotStatus implements Diffable<FlinkStateSnapshotStat
 
     /** Number of failures, used for tracking max retries. */
     private int failures = 0;
+
+    /** Describes state of a snapshot. */
+    @Experimental
+    public enum State {
+        /** Snapshot was successful and available. */
+        COMPLETED,
+
+        /** Error during snapshot. */
+        FAILED,
+
+        /** Snapshot in progress. */
+        IN_PROGRESS,
+
+        /** Not yet processed by the operator. */
+        TRIGGER_PENDING,
+
+        /** Snapshot abandoned due to job failure/upgrade. */
+        ABANDONED
+    }
 }

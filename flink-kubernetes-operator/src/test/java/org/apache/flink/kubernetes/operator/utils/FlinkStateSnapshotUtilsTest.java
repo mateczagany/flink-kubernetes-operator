@@ -28,7 +28,6 @@ import org.apache.flink.kubernetes.operator.api.spec.FlinkVersion;
 import org.apache.flink.kubernetes.operator.api.spec.JobKind;
 import org.apache.flink.kubernetes.operator.api.spec.JobReference;
 import org.apache.flink.kubernetes.operator.api.status.CheckpointType;
-import org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotState;
 import org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotStatus;
 import org.apache.flink.kubernetes.operator.api.status.JobManagerDeploymentStatus;
 import org.apache.flink.kubernetes.operator.api.status.SavepointFormatType;
@@ -47,6 +46,9 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 import static org.apache.flink.kubernetes.operator.TestUtils.reconcileSpec;
+import static org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotStatus.State.COMPLETED;
+import static org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotStatus.State.IN_PROGRESS;
+import static org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotStatus.State.TRIGGER_PENDING;
 import static org.apache.flink.kubernetes.operator.config.KubernetesOperatorConfigOptions.OPERATOR_JOB_SAVEPOINT_DISPOSE_ON_DELETE;
 import static org.apache.flink.kubernetes.operator.config.KubernetesOperatorConfigOptions.SNAPSHOT_RESOURCE_ENABLED;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -77,7 +79,7 @@ public class FlinkStateSnapshotUtilsTest {
 
     @Test
     public void testGetAndValidateFlinkStateSnapshotPathFoundResource() {
-        var snapshot = initSavepoint(FlinkStateSnapshotState.COMPLETED, null);
+        var snapshot = initSavepoint(COMPLETED, null);
         client.resource(snapshot).create();
 
         var snapshotRef =
@@ -117,7 +119,7 @@ public class FlinkStateSnapshotUtilsTest {
 
     @Test
     public void testGetAndValidateFlinkStateSnapshotAlreadyExists() {
-        var snapshot = initSavepoint(FlinkStateSnapshotState.TRIGGER_PENDING, null);
+        var snapshot = initSavepoint(TRIGGER_PENDING, null);
         snapshot.getSpec().getSavepoint().setAlreadyExists(true);
         client.resource(snapshot).create();
 
@@ -133,7 +135,7 @@ public class FlinkStateSnapshotUtilsTest {
 
     @Test
     public void testGetAndValidateFlinkStateSnapshotPathNotCompleted() {
-        var snapshot = initSavepoint(FlinkStateSnapshotState.IN_PROGRESS, null);
+        var snapshot = initSavepoint(IN_PROGRESS, null);
         client.resource(snapshot).create();
 
         var snapshotRef =
@@ -155,10 +157,7 @@ public class FlinkStateSnapshotUtilsTest {
 
         List<String> snapshotNames = new ArrayList<>();
         for (int i = 0; i < snapshotCount; i++) {
-            var snapshot =
-                    initSavepoint(
-                            FlinkStateSnapshotState.COMPLETED,
-                            JobReference.fromFlinkResource(deployment));
+            var snapshot = initSavepoint(COMPLETED, JobReference.fromFlinkResource(deployment));
             var name = String.format("snapshot-%d", i);
             snapshot.getMetadata().setName(name);
             client.resource(snapshot).create();
@@ -295,7 +294,7 @@ public class FlinkStateSnapshotUtilsTest {
     @Test
     public void testAbandonSnapshotIfJobNotRunningNoAbandon() {
         var deployment = initDeployment();
-        var snapshot = initSavepoint(FlinkStateSnapshotState.IN_PROGRESS, null);
+        var snapshot = initSavepoint(IN_PROGRESS, null);
         var eventCollector = new FlinkStateSnapshotEventCollector();
         var eventRecorder = new EventRecorder((x, y) -> {}, eventCollector);
 
@@ -325,7 +324,7 @@ public class FlinkStateSnapshotUtilsTest {
     public void testAbandonSnapshotIfJobNotRunningJobFailed() {
         var deployment = initDeployment();
         deployment.getStatus().getJobStatus().setState("FAILED");
-        var snapshot = initSavepoint(FlinkStateSnapshotState.IN_PROGRESS, null);
+        var snapshot = initSavepoint(IN_PROGRESS, null);
         var eventCollector = new FlinkStateSnapshotEventCollector();
         var eventRecorder = new EventRecorder((x, y) -> {}, eventCollector);
 
@@ -346,7 +345,7 @@ public class FlinkStateSnapshotUtilsTest {
 
     @Test
     public void testAbandonSnapshotIfJobNotRunningJobDeleted() {
-        var snapshot = initSavepoint(FlinkStateSnapshotState.IN_PROGRESS, null);
+        var snapshot = initSavepoint(IN_PROGRESS, null);
         var eventCollector = new FlinkStateSnapshotEventCollector();
         var eventRecorder = new EventRecorder((x, y) -> {}, eventCollector);
 
@@ -412,13 +411,13 @@ public class FlinkStateSnapshotUtilsTest {
     }
 
     private static FlinkStateSnapshot initSavepoint(
-            FlinkStateSnapshotState snapshotState, JobReference jobReference) {
+            FlinkStateSnapshotStatus.State snapshotState, JobReference jobReference) {
         var snapshot =
                 TestUtils.buildFlinkStateSnapshotSavepoint(
                         SAVEPOINT_NAME, NAMESPACE, SAVEPOINT_PATH, false, jobReference);
         snapshot.setStatus(FlinkStateSnapshotStatus.builder().state(snapshotState).build());
 
-        if (FlinkStateSnapshotState.COMPLETED.equals(snapshotState)) {
+        if (COMPLETED.equals(snapshotState)) {
             snapshot.getStatus().setPath(SAVEPOINT_PATH);
         }
 

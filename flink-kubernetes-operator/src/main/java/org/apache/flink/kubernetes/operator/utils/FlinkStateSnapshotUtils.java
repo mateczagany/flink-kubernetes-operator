@@ -28,7 +28,6 @@ import org.apache.flink.kubernetes.operator.api.spec.FlinkStateSnapshotSpec;
 import org.apache.flink.kubernetes.operator.api.spec.JobReference;
 import org.apache.flink.kubernetes.operator.api.spec.SavepointSpec;
 import org.apache.flink.kubernetes.operator.api.status.CheckpointType;
-import org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotState;
 import org.apache.flink.kubernetes.operator.api.status.SavepointFormatType;
 import org.apache.flink.kubernetes.operator.api.status.SnapshotTriggerType;
 import org.apache.flink.kubernetes.operator.config.FlinkOperatorConfiguration;
@@ -45,6 +44,10 @@ import javax.annotation.Nullable;
 import java.time.Instant;
 import java.util.UUID;
 
+import static org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotStatus.State.ABANDONED;
+import static org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotStatus.State.COMPLETED;
+import static org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotStatus.State.IN_PROGRESS;
+import static org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotStatus.State.TRIGGER_PENDING;
 import static org.apache.flink.kubernetes.operator.config.KubernetesOperatorConfigOptions.SNAPSHOT_RESOURCE_ENABLED;
 import static org.apache.flink.kubernetes.operator.reconciler.SnapshotType.CHECKPOINT;
 import static org.apache.flink.kubernetes.operator.reconciler.SnapshotType.SAVEPOINT;
@@ -112,7 +115,7 @@ public class FlinkStateSnapshotUtils {
             }
         }
 
-        if (FlinkStateSnapshotState.COMPLETED != result.getStatus().getState()) {
+        if (COMPLETED != result.getStatus().getState()) {
             throw new IllegalArgumentException(
                     String.format(
                             "Snapshot %s/%s is not complete yet.",
@@ -317,7 +320,7 @@ public class FlinkStateSnapshotUtils {
 
     /**
      * Sets a snapshot's state to {@link
-     * org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotState#ABANDONED}.
+     * org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotStatus.State#ABANDONED}.
      *
      * @param kubernetesClient kubernetes client
      * @param eventRecorder event recorder to add event
@@ -337,7 +340,7 @@ public class FlinkStateSnapshotUtils {
                 error,
                 kubernetesClient);
 
-        snapshot.getStatus().setState(FlinkStateSnapshotState.ABANDONED);
+        snapshot.getStatus().setState(ABANDONED);
         snapshot.getStatus().setPath(null);
         snapshot.getStatus().setError(error);
         snapshot.getStatus().setResultTimestamp(DateTimeUtils.kubernetes(Instant.now()));
@@ -345,7 +348,7 @@ public class FlinkStateSnapshotUtils {
 
     /**
      * Sets a snapshot's state to {@link
-     * org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotState#COMPLETED}.
+     * org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotStatus.State#COMPLETED}.
      *
      * @param snapshot snapshot resource
      * @param location result location
@@ -355,7 +358,7 @@ public class FlinkStateSnapshotUtils {
             FlinkStateSnapshot snapshot, String location, boolean setTriggerTimestamp) {
         var time = DateTimeUtils.kubernetes(Instant.now());
 
-        snapshot.getStatus().setState(FlinkStateSnapshotState.COMPLETED);
+        snapshot.getStatus().setState(COMPLETED);
         snapshot.getStatus().setPath(location);
         snapshot.getStatus().setError(null);
         snapshot.getStatus().setResultTimestamp(time);
@@ -366,7 +369,7 @@ public class FlinkStateSnapshotUtils {
 
     /**
      * Sets a snapshot's state to {@link
-     * org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotState#IN_PROGRESS}.
+     * org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotStatus.State#IN_PROGRESS}.
      *
      * @param snapshot snapshot resource
      * @param triggerId trigger ID
@@ -375,18 +378,18 @@ public class FlinkStateSnapshotUtils {
         snapshot.getMetadata()
                 .getLabels()
                 .putIfAbsent(CrdConstants.LABEL_SNAPSHOT_TYPE, SnapshotTriggerType.MANUAL.name());
-        snapshot.getStatus().setState(FlinkStateSnapshotState.IN_PROGRESS);
+        snapshot.getStatus().setState(IN_PROGRESS);
         snapshot.getStatus().setTriggerId(triggerId);
         snapshot.getStatus().setTriggerTimestamp(DateTimeUtils.kubernetes(Instant.now()));
     }
 
     /**
      * Sets a snapshot's state to {@link
-     * org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotState#TRIGGER_PENDING}.
+     * org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotStatus.State#TRIGGER_PENDING}.
      *
      * @param snapshot snapshot resource
      */
     public static void snapshotTriggerPending(FlinkStateSnapshot snapshot) {
-        snapshot.getStatus().setState(FlinkStateSnapshotState.TRIGGER_PENDING);
+        snapshot.getStatus().setState(TRIGGER_PENDING);
     }
 }

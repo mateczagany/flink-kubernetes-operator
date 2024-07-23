@@ -40,6 +40,7 @@ import io.javaoperatorsdk.operator.api.reconciler.EventSourceInitializer;
 import io.javaoperatorsdk.operator.api.reconciler.Reconciler;
 import io.javaoperatorsdk.operator.api.reconciler.UpdateControl;
 import io.javaoperatorsdk.operator.processing.event.source.EventSource;
+import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -49,6 +50,7 @@ import java.util.Objects;
 import java.util.Set;
 
 /** Controller that runs the main reconcile loop for {@link FlinkStateSnapshot}. */
+@RequiredArgsConstructor
 @ControllerConfiguration
 public class FlinkStateSnapshotController
         implements Reconciler<FlinkStateSnapshot>,
@@ -64,21 +66,6 @@ public class FlinkStateSnapshotController
     private final StateSnapshotObserver observer;
     private final EventRecorder eventRecorder;
     private final StatusRecorder<FlinkStateSnapshot, FlinkStateSnapshotStatus> statusRecorder;
-
-    public FlinkStateSnapshotController(
-            Set<FlinkResourceValidator> validators,
-            FlinkResourceContextFactory ctxFactory,
-            StateSnapshotReconciler reconciler,
-            StateSnapshotObserver observer,
-            EventRecorder eventRecorder,
-            StatusRecorder<FlinkStateSnapshot, FlinkStateSnapshotStatus> statusRecorder) {
-        this.validators = validators;
-        this.ctxFactory = ctxFactory;
-        this.reconciler = reconciler;
-        this.observer = observer;
-        this.eventRecorder = eventRecorder;
-        this.statusRecorder = statusRecorder;
-    }
 
     @Override
     public UpdateControl<FlinkStateSnapshot> reconcile(
@@ -103,9 +90,8 @@ public class FlinkStateSnapshotController
     public DeleteControl cleanup(
             FlinkStateSnapshot flinkStateSnapshot, Context<FlinkStateSnapshot> josdkContext) {
         var ctx = ctxFactory.getFlinkStateSnapshotContext(flinkStateSnapshot, josdkContext);
-        DeleteControl deleteControl;
         try {
-            deleteControl = reconciler.cleanup(ctx);
+            return reconciler.cleanup(ctx);
         } catch (Exception e) {
             eventRecorder.triggerSnapshotEvent(
                     flinkStateSnapshot,
@@ -121,8 +107,6 @@ public class FlinkStateSnapshotController
             return DeleteControl.noFinalizerRemoval()
                     .rescheduleAfter(ctx.getOperatorConfig().getReconcileInterval().toMillis());
         }
-
-        return deleteControl;
     }
 
     @Override

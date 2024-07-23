@@ -29,7 +29,7 @@ import org.apache.flink.kubernetes.operator.api.spec.JobState;
 import org.apache.flink.kubernetes.operator.api.spec.UpgradeMode;
 import org.apache.flink.kubernetes.operator.api.status.CommonStatus;
 import org.apache.flink.kubernetes.operator.api.status.FlinkDeploymentStatus;
-import org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotState;
+import org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotStatus;
 import org.apache.flink.kubernetes.operator.api.status.JobManagerDeploymentStatus;
 import org.apache.flink.kubernetes.operator.api.status.JobStatus;
 import org.apache.flink.kubernetes.operator.api.status.ReconciliationState;
@@ -241,7 +241,7 @@ public class ReconciliationUtils {
     public static void updateForReconciliationError(
             FlinkStateSnapshotContext ctx, Throwable error) {
         var snapshot = ctx.getResource();
-        snapshot.getStatus().setState(FlinkStateSnapshotState.FAILED);
+        snapshot.getStatus().setState(FlinkStateSnapshotStatus.State.FAILED);
         snapshot.getStatus().setFailures(snapshot.getStatus().getFailures() + 1);
         snapshot.getStatus().setResultTimestamp(DateTimeUtils.kubernetes(Instant.now()));
 

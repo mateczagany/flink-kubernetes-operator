@@ -100,8 +100,9 @@ public class JobSpec implements Diffable<JobSpec> {
 
     /**
      * Nonce used to trigger a full redeployment of the job from the savepoint path specified in
-     * initialSavepointPath or initialSavepointName. In order to trigger redeployment, change the
-     * number to a different non-null value. Rollback is not possible after redeployment.
+     * initialSavepointPath or the path/FlinkStateSnapshot reference in flinkStateSnapshotReference.
+     * In order to trigger redeployment, change the number to a different non-null value. Rollback
+     * is not possible after redeployment.
      */
     @SpecDiff(value = DiffType.SAVEPOINT_REDEPLOY, onNullIgnore = true)
     private Long savepointRedeployNonce;

@@ -34,6 +34,7 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+@Deprecated
 public class SavepointInfo implements SnapshotInfo {
     /**
      * Last completed savepoint by the operator for manual and periodic snapshots. Only used if

@@ -28,7 +28,6 @@ import org.apache.flink.kubernetes.operator.api.FlinkStateSnapshot;
 import org.apache.flink.kubernetes.operator.api.spec.FlinkVersion;
 import org.apache.flink.kubernetes.operator.api.spec.JobReference;
 import org.apache.flink.kubernetes.operator.api.status.CheckpointType;
-import org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotState;
 import org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotStatus;
 import org.apache.flink.kubernetes.operator.api.status.JobStatus;
 import org.apache.flink.kubernetes.operator.api.status.SavepointFormatType;
@@ -60,6 +59,11 @@ import java.time.Instant;
 import java.util.Optional;
 import java.util.function.BiConsumer;
 
+import static org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotStatus.State.ABANDONED;
+import static org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotStatus.State.COMPLETED;
+import static org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotStatus.State.FAILED;
+import static org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotStatus.State.IN_PROGRESS;
+import static org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotStatus.State.TRIGGER_PENDING;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -116,12 +120,11 @@ public class FlinkStateSnapshotControllerTest {
 
         for (int i = 0; i < backoffLimit; i++) {
             controller.updateErrorStatus(snapshot, context, new Exception());
-            assertThat(snapshot.getStatus().getState())
-                    .isEqualTo(FlinkStateSnapshotState.TRIGGER_PENDING);
+            assertThat(snapshot.getStatus().getState()).isEqualTo(TRIGGER_PENDING);
         }
 
         controller.updateErrorStatus(snapshot, context, new Exception());
-        assertThat(snapshot.getStatus().getState()).isEqualTo(FlinkStateSnapshotState.FAILED);
+        assertThat(snapshot.getStatus().getState()).isEqualTo(FAILED);
     }
 
     @ParameterizedTest
@@ -151,8 +154,7 @@ public class FlinkStateSnapshotControllerTest {
         var snapshot = createSavepoint(deployment);
         controller.reconcile(snapshot, context);
 
-        assertThat(snapshot.getStatus().getState())
-                .isEqualTo(FlinkStateSnapshotState.TRIGGER_PENDING);
+        assertThat(snapshot.getStatus().getState()).isEqualTo(TRIGGER_PENDING);
 
         assertThat(flinkStateSnapshotEventCollector.events)
                 .hasSize(1)
@@ -172,7 +174,7 @@ public class FlinkStateSnapshotControllerTest {
         var snapshot = createSavepoint(deployment);
 
         controller.reconcile(snapshot, context);
-        assertThat(snapshot.getStatus().getState()).isEqualTo(FlinkStateSnapshotState.IN_PROGRESS);
+        assertThat(snapshot.getStatus().getState()).isEqualTo(IN_PROGRESS);
 
         deployment.getStatus().getJobStatus().setState("CANCELED");
         controller.reconcile(snapshot, context);
@@ -182,7 +184,7 @@ public class FlinkStateSnapshotControllerTest {
         assertThat(triggerAt).isAfter(createdAt);
         assertThat(status.getPath()).isNull();
         assertThat(status.getTriggerId()).isEqualTo("savepoint_trigger_0");
-        assertThat(status.getState()).isEqualTo(FlinkStateSnapshotState.ABANDONED);
+        assertThat(status.getState()).isEqualTo(ABANDONED);
         assertThat(statusUpdateCounter.getCount()).isEqualTo(2);
     }
 
@@ -201,19 +203,19 @@ public class FlinkStateSnapshotControllerTest {
         assertThat(status.getPath()).isNull();
         assertThat(status.getError()).isNull();
         assertThat(status.getTriggerId()).isEqualTo("savepoint_trigger_0");
-        assertThat(status.getState()).isEqualTo(FlinkStateSnapshotState.IN_PROGRESS);
+        assertThat(status.getState()).isEqualTo(IN_PROGRESS);
         assertThat(snapshot.getMetadata().getLabels().get(CrdConstants.LABEL_SNAPSHOT_TYPE))
                 .isEqualTo(SnapshotTriggerType.MANUAL.name());
         assertThat(statusUpdateCounter.getCount()).isEqualTo(1);
 
         // First time check will still result in pending due to TestingFlinkService impl
         controller.reconcile(snapshot, context);
-        assertThat(status.getState()).isEqualTo(FlinkStateSnapshotState.IN_PROGRESS);
+        assertThat(status.getState()).isEqualTo(IN_PROGRESS);
 
         // Second time check complete
         controller.reconcile(snapshot, context);
         status = snapshot.getStatus();
-        assertThat(status.getState()).isEqualTo(FlinkStateSnapshotState.COMPLETED);
+        assertThat(status.getState()).isEqualTo(COMPLETED);
         assertThat(status.getPath()).isEqualTo("savepoint_0");
         assertThat(status.getError()).isNull();
         assertThat(statusUpdateCounter.getCount()).isEqualTo(2);
@@ -227,17 +229,17 @@ public class FlinkStateSnapshotControllerTest {
         snapshot.setStatus(new FlinkStateSnapshotStatus());
 
         snapshot.getSpec().getSavepoint().setDisposeOnDelete(true);
-        snapshot.getStatus().setState(FlinkStateSnapshotState.TRIGGER_PENDING);
+        snapshot.getStatus().setState(TRIGGER_PENDING);
         assertDeleteControl(controller.cleanup(snapshot, context), true, null);
         assertThat(flinkService.getDisposedSavepoints()).isEmpty();
 
         snapshot.getSpec().getSavepoint().setDisposeOnDelete(true);
-        snapshot.getStatus().setState(FlinkStateSnapshotState.FAILED);
+        snapshot.getStatus().setState(FAILED);
         assertDeleteControl(controller.cleanup(snapshot, context), true, null);
         assertThat(flinkService.getDisposedSavepoints()).isEmpty();
 
         snapshot.getSpec().getSavepoint().setDisposeOnDelete(true);
-        snapshot.getStatus().setState(FlinkStateSnapshotState.IN_PROGRESS);
+        snapshot.getStatus().setState(IN_PROGRESS);
         assertDeleteControl(
                 controller.cleanup(snapshot, context),
                 false,
@@ -246,12 +248,12 @@ public class FlinkStateSnapshotControllerTest {
 
         // No disposal requested
         snapshot.getSpec().getSavepoint().setDisposeOnDelete(false);
-        snapshot.getStatus().setState(FlinkStateSnapshotState.COMPLETED);
+        snapshot.getStatus().setState(COMPLETED);
         assertDeleteControl(controller.cleanup(snapshot, context), true, null);
         assertThat(flinkService.getDisposedSavepoints()).isEmpty();
 
         snapshot.getStatus().setPath(SAVEPOINT_PATH);
-        snapshot.getStatus().setState(FlinkStateSnapshotState.COMPLETED);
+        snapshot.getStatus().setState(COMPLETED);
 
         // Failed dispose, job not found
         snapshot.getSpec().getSavepoint().setDisposeOnDelete(true);
@@ -312,15 +314,14 @@ public class FlinkStateSnapshotControllerTest {
                         ReconciliationException.class,
                         () -> controller.reconcile(snapshot, context));
         controller.updateErrorStatus(snapshot, context, ex);
-        assertThat(snapshot.getStatus().getState())
-                .isEqualTo(FlinkStateSnapshotState.TRIGGER_PENDING);
+        assertThat(snapshot.getStatus().getState()).isEqualTo(TRIGGER_PENDING);
         assertThat(snapshot.getStatus().getPath()).isNull();
         assertThat(snapshot.getStatus().getError()).contains("savepoint path");
 
         // Add path to spec, it should work then
         snapshot.getSpec().getSavepoint().setPath(SAVEPOINT_PATH);
         controller.reconcile(snapshot, context);
-        assertThat(snapshot.getStatus().getState()).isEqualTo(FlinkStateSnapshotState.IN_PROGRESS);
+        assertThat(snapshot.getStatus().getState()).isEqualTo(IN_PROGRESS);
 
         assertThat(flinkStateSnapshotEventCollector.events)
                 .hasSize(1)
@@ -350,17 +351,17 @@ public class FlinkStateSnapshotControllerTest {
         assertThat(status.getPath()).isNull();
         assertThat(status.getError()).isNull();
         assertThat(status.getTriggerId()).isEqualTo("checkpoint_trigger_0");
-        assertThat(status.getState()).isEqualTo(FlinkStateSnapshotState.IN_PROGRESS);
+        assertThat(status.getState()).isEqualTo(IN_PROGRESS);
         assertThat(statusUpdateCounter.getCount()).isEqualTo(1);
 
         // First time check will still result in pending due to TestingFlinkService impl
         controller.reconcile(snapshot, context);
-        assertThat(status.getState()).isEqualTo(FlinkStateSnapshotState.IN_PROGRESS);
+        assertThat(status.getState()).isEqualTo(IN_PROGRESS);
 
         // Second time check complete
         controller.reconcile(snapshot, context);
         status = snapshot.getStatus();
-        assertThat(status.getState()).isEqualTo(FlinkStateSnapshotState.COMPLETED);
+        assertThat(status.getState()).isEqualTo(COMPLETED);
         assertThat(status.getPath()).isEqualTo("checkpoint_1");
         assertThat(statusUpdateCounter.getCount()).isEqualTo(2);
     }
@@ -379,7 +380,7 @@ public class FlinkStateSnapshotControllerTest {
         controller.updateErrorStatus(snapshot, context, ex);
 
         var status = snapshot.getStatus();
-        assertThat(status.getState()).isEqualTo(FlinkStateSnapshotState.FAILED);
+        assertThat(status.getState()).isEqualTo(FAILED);
         assertThat(status.getPath()).isNull();
         assertThat(status.getFailures()).isEqualTo(1);
         assertThat(status.getError()).contains("requires Flink 1.17+");
@@ -406,11 +407,11 @@ public class FlinkStateSnapshotControllerTest {
         var createdAt = Instant.parse(snapshot.getMetadata().getCreationTimestamp());
         var triggerAt = Instant.parse(status.getTriggerTimestamp());
         assertThat(triggerAt).isAfter(createdAt);
-        assertThat(status.getState()).isEqualTo(FlinkStateSnapshotState.TRIGGER_PENDING);
+        assertThat(status.getState()).isEqualTo(TRIGGER_PENDING);
         assertThat(status.getError()).contains(TestingFlinkService.SNAPSHOT_ERROR_MESSAGE);
 
         controller.reconcile(snapshot, context);
-        assertThat(snapshot.getStatus().getState()).isEqualTo(FlinkStateSnapshotState.IN_PROGRESS);
+        assertThat(snapshot.getStatus().getState()).isEqualTo(IN_PROGRESS);
         flinkService.getSavepointTriggers().clear();
 
         // Backoff limit reached, we have FAILED state
@@ -424,7 +425,7 @@ public class FlinkStateSnapshotControllerTest {
         triggerAt = Instant.parse(status.getTriggerTimestamp());
 
         assertThat(triggerAt).isAfter(createdAt);
-        assertThat(status.getState()).isEqualTo(FlinkStateSnapshotState.FAILED);
+        assertThat(status.getState()).isEqualTo(FAILED);
         assertThat(status.getPath()).isNull();
         assertThat(status.getFailures()).isEqualTo(2);
         assertThat(status.getError()).contains(TestingFlinkService.SNAPSHOT_ERROR_MESSAGE);
@@ -464,11 +465,11 @@ public class FlinkStateSnapshotControllerTest {
         var createdAt = Instant.parse(snapshot.getMetadata().getCreationTimestamp());
         var triggerAt = Instant.parse(status.getTriggerTimestamp());
         assertThat(triggerAt).isAfter(createdAt);
-        assertThat(status.getState()).isEqualTo(FlinkStateSnapshotState.TRIGGER_PENDING);
+        assertThat(status.getState()).isEqualTo(TRIGGER_PENDING);
         assertThat(status.getError()).contains(TestingFlinkService.SNAPSHOT_ERROR_MESSAGE);
 
         controller.reconcile(snapshot, context);
-        assertThat(snapshot.getStatus().getState()).isEqualTo(FlinkStateSnapshotState.IN_PROGRESS);
+        assertThat(snapshot.getStatus().getState()).isEqualTo(IN_PROGRESS);
         flinkService.getCheckpointTriggers().clear();
 
         // Backoff limit reached, we have FAILED state
@@ -483,7 +484,7 @@ public class FlinkStateSnapshotControllerTest {
         triggerAt = Instant.parse(status.getTriggerTimestamp());
 
         assertThat(triggerAt).isAfter(createdAt);
-        assertThat(status.getState()).isEqualTo(FlinkStateSnapshotState.FAILED);
+        assertThat(status.getState()).isEqualTo(FAILED);
         assertThat(status.getPath()).isNull();
         assertThat(status.getFailures()).isEqualTo(2);
         assertThat(status.getError()).contains(TestingFlinkService.SNAPSHOT_ERROR_MESSAGE);
@@ -515,7 +516,7 @@ public class FlinkStateSnapshotControllerTest {
         controller.reconcile(snapshot, TestUtils.createSnapshotContext(client, deployment));
 
         var status = snapshot.getStatus();
-        assertThat(status.getState()).isEqualTo(FlinkStateSnapshotState.IN_PROGRESS);
+        assertThat(status.getState()).isEqualTo(IN_PROGRESS);
         assertThat(status.getPath()).isNull();
         assertThat(status.getError()).isNull();
 
@@ -524,7 +525,7 @@ public class FlinkStateSnapshotControllerTest {
         controller.reconcile(snapshot, TestUtils.createSnapshotContext(client, null));
 
         status = snapshot.getStatus();
-        assertThat(status.getState()).isEqualTo(FlinkStateSnapshotState.ABANDONED);
+        assertThat(status.getState()).isEqualTo(ABANDONED);
         assertThat(status.getPath()).isNull();
         assertThat(status.getError()).isEqualTo(errorMessage);
 
@@ -556,7 +557,7 @@ public class FlinkStateSnapshotControllerTest {
         controller.reconcile(snapshot, context);
 
         var status = snapshot.getStatus();
-        assertThat(status.getState()).isEqualTo(FlinkStateSnapshotState.ABANDONED);
+        assertThat(status.getState()).isEqualTo(ABANDONED);
         assertThat(status.getPath()).isNull();
         assertThat(status.getError()).isEqualTo(errorMessage);
         assertThat(status.getTriggerId()).isNull();

@@ -23,6 +23,7 @@ import org.apache.flink.kubernetes.operator.api.FlinkDeployment;
 import org.apache.flink.kubernetes.operator.api.FlinkSessionJob;
 import org.apache.flink.kubernetes.operator.api.FlinkStateSnapshot;
 import org.apache.flink.kubernetes.operator.api.spec.JobKind;
+import org.apache.flink.kubernetes.operator.api.spec.JobReference;
 import org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotStatus;
 import org.apache.flink.kubernetes.operator.config.FlinkConfigManager;
 import org.apache.flink.kubernetes.operator.config.FlinkOperatorConfiguration;
@@ -44,61 +45,56 @@ public class FlinkStateSnapshotContext {
     private final Context<FlinkStateSnapshot> josdkContext;
     private final FlinkConfigManager configManager;
 
-    private FlinkOperatorConfiguration operatorConfig;
-    private Configuration referencedJobObserveConfig;
-    private FlinkDeployment referencedJobFlinkDeployment;
+    @Getter(lazy = true)
+    private final FlinkOperatorConfiguration operatorConfig = operatorConfig();
+
+    @Getter(lazy = true)
+    private final Configuration referencedJobObserveConfig = referencedJobObserveConfig();
+
+    @Getter(lazy = true)
+    private final FlinkDeployment referencedJobFlinkDeployment = referencedJobFlinkDeployment();
 
     /**
      * @return Operator configuration for this resource.
      */
-    public FlinkOperatorConfiguration getOperatorConfig() {
-        if (operatorConfig != null) {
-            return operatorConfig;
-        }
-        return operatorConfig =
-                configManager.getOperatorConfiguration(
-                        getResource().getMetadata().getNamespace(), null);
+    public FlinkOperatorConfiguration operatorConfig() {
+        return configManager.getOperatorConfiguration(
+                getResource().getMetadata().getNamespace(), null);
+    }
+
+    public Configuration referencedJobObserveConfig() {
+        return configManager.getObserveConfig(getReferencedJobFlinkDeployment());
+    }
+
+    public FlinkDeployment referencedJobFlinkDeployment() {
+        return getJosdkContext()
+                .getSecondaryResource(FlinkDeployment.class)
+                .orElseThrow(
+                        () ->
+                                new RuntimeException(
+                                        String.format(
+                                                "Failed to find FlinkDeployment from job reference: %s",
+                                                getResource()
+                                                        .getSpec()
+                                                        .getJobReference()
+                                                        .getName())));
     }
 
     public Optional<AbstractFlinkResource<?, ?>> getSecondaryResource() {
-        var jobRef = getResource().getSpec().getJobReference();
-        if (jobRef == null) {
-            return Optional.empty();
-        }
+        var jobKind =
+                Optional.ofNullable(getResource().getSpec().getJobReference())
+                        .map(JobReference::getKind)
+                        .orElse(null);
 
-        if (JobKind.FLINK_DEPLOYMENT.equals(jobRef.getKind())) {
+        if (JobKind.FLINK_DEPLOYMENT.equals(jobKind)) {
             return getJosdkContext().getSecondaryResource(FlinkDeployment.class).map(r -> r);
-        } else if (JobKind.FLINK_SESSION_JOB.equals(jobRef.getKind())) {
+        }
+
+        if (JobKind.FLINK_SESSION_JOB.equals(jobKind)) {
             return getJosdkContext().getSecondaryResource(FlinkSessionJob.class).map(r -> r);
-        } else {
-            return Optional.empty();
         }
-    }
 
-    public Configuration getReferencedJobObserveConfig() {
-        if (referencedJobObserveConfig != null) {
-            return referencedJobObserveConfig;
-        }
-        return referencedJobObserveConfig =
-                configManager.getObserveConfig(getReferencedJobFlinkDeployment());
-    }
-
-    public FlinkDeployment getReferencedJobFlinkDeployment() {
-        if (referencedJobFlinkDeployment != null) {
-            return referencedJobFlinkDeployment;
-        }
-        return referencedJobFlinkDeployment =
-                getJosdkContext()
-                        .getSecondaryResource(FlinkDeployment.class)
-                        .orElseThrow(
-                                () ->
-                                        new RuntimeException(
-                                                String.format(
-                                                        "Failed to find FlinkDeployment from job reference: %s",
-                                                        getResource()
-                                                                .getSpec()
-                                                                .getJobReference()
-                                                                .getName())));
+        return Optional.empty();
     }
 
     /**

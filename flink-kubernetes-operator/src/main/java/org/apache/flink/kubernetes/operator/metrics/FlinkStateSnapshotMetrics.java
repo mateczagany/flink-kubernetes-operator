@@ -24,12 +24,12 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
-/** FlinkSessionJob metrics. */
+/** FlinkStateSnapshot metrics. */
 public class FlinkStateSnapshotMetrics implements CustomResourceMetrics<FlinkStateSnapshot> {
 
     private final KubernetesOperatorMetricGroup parentMetricGroup;
     private final Configuration configuration;
-    private final Map<String, Set<String>> sessionJobs = new ConcurrentHashMap<>();
+    private final Map<String, Set<String>> snapshots = new ConcurrentHashMap<>();
     public static final String COUNTER_NAME = "Count";
 
     public FlinkStateSnapshotMetrics(
@@ -38,30 +38,30 @@ public class FlinkStateSnapshotMetrics implements CustomResourceMetrics<FlinkSta
         this.configuration = configuration;
     }
 
-    public void onUpdate(FlinkStateSnapshot sessionJob) {
-        onRemove(sessionJob);
-        sessionJobs
+    public void onUpdate(FlinkStateSnapshot snapshot) {
+        onRemove(snapshot);
+        snapshots
                 .computeIfAbsent(
-                        sessionJob.getMetadata().getNamespace(),
+                        snapshot.getMetadata().getNamespace(),
                         ns -> {
-                            initNamespaceSessionJobCounts(ns);
+                            initNamespaceSnapshotCounts(ns);
                             return ConcurrentHashMap.newKeySet();
                         })
-                .add(sessionJob.getMetadata().getName());
+                .add(snapshot.getMetadata().getName());
     }
 
-    public void onRemove(FlinkStateSnapshot sessionJob) {
-        if (!sessionJobs.containsKey(sessionJob.getMetadata().getNamespace())) {
+    public void onRemove(FlinkStateSnapshot snapshot) {
+        if (!snapshots.containsKey(snapshot.getMetadata().getNamespace())) {
             return;
         }
-        sessionJobs
-                .get(sessionJob.getMetadata().getNamespace())
-                .remove(sessionJob.getMetadata().getName());
+        snapshots
+                .get(snapshot.getMetadata().getNamespace())
+                .remove(snapshot.getMetadata().getName());
     }
 
-    private void initNamespaceSessionJobCounts(String ns) {
+    private void initNamespaceSnapshotCounts(String ns) {
         parentMetricGroup
                 .createResourceNamespaceGroup(configuration, FlinkStateSnapshot.class, ns)
-                .gauge(COUNTER_NAME, () -> sessionJobs.get(ns).size());
+                .gauge(COUNTER_NAME, () -> snapshots.get(ns).size());
     }
 }

@@ -30,7 +30,6 @@ import org.apache.flink.kubernetes.operator.api.spec.UpgradeMode;
 import org.apache.flink.kubernetes.operator.api.status.FlinkDeploymentStatus;
 import org.apache.flink.kubernetes.operator.api.status.JobManagerDeploymentStatus;
 import org.apache.flink.kubernetes.operator.api.status.Savepoint;
-import org.apache.flink.kubernetes.operator.api.status.SavepointFormatType;
 import org.apache.flink.kubernetes.operator.api.status.SnapshotTriggerType;
 import org.apache.flink.kubernetes.operator.autoscaler.KubernetesJobAutoScalerContext;
 import org.apache.flink.kubernetes.operator.config.KubernetesOperatorConfigOptions;
@@ -41,7 +40,6 @@ import org.apache.flink.kubernetes.operator.observer.ClusterHealthEvaluator;
 import org.apache.flink.kubernetes.operator.reconciler.ReconciliationUtils;
 import org.apache.flink.kubernetes.operator.service.FlinkService;
 import org.apache.flink.kubernetes.operator.utils.EventRecorder;
-import org.apache.flink.kubernetes.operator.utils.FlinkStateSnapshotUtils;
 import org.apache.flink.kubernetes.operator.utils.FlinkUtils;
 import org.apache.flink.kubernetes.operator.utils.IngressUtils;
 import org.apache.flink.kubernetes.operator.utils.StatusRecorder;
@@ -243,27 +241,10 @@ public class ApplicationReconciler
     @Override
     protected void cancelJob(FlinkResourceContext<FlinkDeployment> ctx, UpgradeMode upgradeMode)
             throws Exception {
-        var conf = ctx.getObserveConfig() != null ? ctx.getObserveConfig() : new Configuration();
-        var savepointFormatType =
-                conf.get(KubernetesOperatorConfigOptions.OPERATOR_SAVEPOINT_FORMAT_TYPE);
-
-        var savepointOpt = ctx.getFlinkService().cancelJob(ctx.getResource(), upgradeMode, conf);
-        savepointOpt.ifPresent(
-                location -> {
-                    var snapshotRef =
-                            FlinkStateSnapshotUtils.createReferenceForUpgradeSavepoint(
-                                    ObjectUtils.firstNonNull(
-                                            ctx.getObserveConfig(), new Configuration()),
-                                    ctx.getOperatorConfig(),
-                                    ctx.getKubernetesClient(),
-                                    ctx.getResource(),
-                                    SavepointFormatType.valueOf(savepointFormatType.name()),
-                                    location);
-                    ctx.getResource()
-                            .getStatus()
-                            .getJobStatus()
-                            .setUpgradeSnapshotReference(snapshotRef);
-                });
+        var conf = ObjectUtils.firstNonNull(ctx.getObserveConfig(), new Configuration());
+        ctx.getFlinkService()
+                .cancelJob(ctx.getResource(), upgradeMode, conf)
+                .ifPresent(location -> setUpgradeSnapshotReferenceFromSavepoint(ctx, location));
     }
 
     @Override

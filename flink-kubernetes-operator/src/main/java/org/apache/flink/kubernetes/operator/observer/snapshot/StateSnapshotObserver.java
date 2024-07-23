@@ -18,7 +18,6 @@
 package org.apache.flink.kubernetes.operator.observer.snapshot;
 
 import org.apache.flink.kubernetes.operator.api.FlinkDeployment;
-import org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotState;
 import org.apache.flink.kubernetes.operator.controller.FlinkResourceContext;
 import org.apache.flink.kubernetes.operator.controller.FlinkStateSnapshotContext;
 import org.apache.flink.kubernetes.operator.exception.ReconciliationException;
@@ -33,6 +32,8 @@ import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import static org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotStatus.State.IN_PROGRESS;
+
 /** The observer of {@link org.apache.flink.kubernetes.operator.api.FlinkStateSnapshot}. */
 @RequiredArgsConstructor
 public class StateSnapshotObserver {
@@ -46,7 +47,7 @@ public class StateSnapshotObserver {
         var resource = ctx.getResource();
         var savepointState = resource.getStatus().getState();
 
-        if (FlinkStateSnapshotState.IN_PROGRESS.equals(savepointState)) {
+        if (IN_PROGRESS.equals(savepointState)) {
             observeSnapshotState(ctx);
         }
     }
@@ -128,27 +129,25 @@ public class StateSnapshotObserver {
 
         if (checkpointInfo.getError() != null) {
             throw new ReconciliationException(checkpointInfo.getError());
-        } else {
-            LOG.debug(
-                    "Checkpoint {} was successful, querying final checkpoint path...",
-                    resourceName);
-            var checkpointStatsResult =
-                    ctxFlinkDeployment
-                            .getFlinkService()
-                            .fetchCheckpointStats(
-                                    jobId,
-                                    checkpointInfo.getCheckpointId(),
-                                    ctx.getReferencedJobObserveConfig());
-
-            if (checkpointStatsResult.isPending()) {
-                return;
-            } else if (checkpointStatsResult.getError() != null) {
-                throw new ReconciliationException(checkpointStatsResult.getError());
-            }
-
-            LOG.info("Checkpoint {} successful: {}", resourceName, checkpointStatsResult.getPath());
-            FlinkStateSnapshotUtils.snapshotSuccessful(
-                    resource, checkpointStatsResult.getPath(), false);
         }
+
+        LOG.debug("Checkpoint {} was successful, querying final checkpoint path...", resourceName);
+        var checkpointStatsResult =
+                ctxFlinkDeployment
+                        .getFlinkService()
+                        .fetchCheckpointStats(
+                                jobId,
+                                checkpointInfo.getCheckpointId(),
+                                ctx.getReferencedJobObserveConfig());
+
+        if (checkpointStatsResult.isPending()) {
+            return;
+        } else if (checkpointStatsResult.getError() != null) {
+            throw new ReconciliationException(checkpointStatsResult.getError());
+        }
+
+        LOG.info("Checkpoint {} successful: {}", resourceName, checkpointStatsResult.getPath());
+        FlinkStateSnapshotUtils.snapshotSuccessful(
+                resource, checkpointStatsResult.getPath(), false);
     }
 }

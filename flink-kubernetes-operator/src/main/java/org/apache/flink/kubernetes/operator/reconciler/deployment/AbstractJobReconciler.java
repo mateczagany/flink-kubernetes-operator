@@ -48,6 +48,7 @@ import org.apache.flink.util.Preconditions;
 
 import io.javaoperatorsdk.operator.processing.event.ResourceID;
 import lombok.Value;
+import org.apache.commons.lang3.ObjectUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -296,6 +297,31 @@ public abstract class AbstractJobReconciler<
         }
 
         deploy(ctx, spec, deployConfig, savepointOpt, requireHaMetadata);
+    }
+
+    /**
+     * Updates the upgrade snapshot reference field in the JobSpec of the current Flink resource. If
+     * snapshot resources are enabled, a new FlinkStateSnapshot will be created, else it will only
+     * set the path field of the snapshot reference.
+     *
+     * @param ctx context
+     * @param savepointLocation location of savepoint taken
+     */
+    protected void setUpgradeSnapshotReferenceFromSavepoint(
+            FlinkResourceContext<?> ctx, String savepointLocation) {
+        var conf = ObjectUtils.firstNonNull(ctx.getObserveConfig(), new Configuration());
+        var savepointFormatType =
+                conf.get(KubernetesOperatorConfigOptions.OPERATOR_SAVEPOINT_FORMAT_TYPE);
+
+        var snapshotRef =
+                FlinkStateSnapshotUtils.createReferenceForUpgradeSavepoint(
+                        conf,
+                        ctx.getOperatorConfig(),
+                        ctx.getKubernetesClient(),
+                        ctx.getResource(),
+                        SavepointFormatType.valueOf(savepointFormatType.name()),
+                        savepointLocation);
+        ctx.getResource().getStatus().getJobStatus().setUpgradeSnapshotReference(snapshotRef);
     }
 
     /**

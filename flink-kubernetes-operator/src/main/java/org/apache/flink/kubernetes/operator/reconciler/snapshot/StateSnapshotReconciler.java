@@ -21,7 +21,6 @@ import org.apache.flink.configuration.CheckpointingOptions;
 import org.apache.flink.kubernetes.operator.api.FlinkDeployment;
 import org.apache.flink.kubernetes.operator.api.FlinkStateSnapshot;
 import org.apache.flink.kubernetes.operator.api.spec.FlinkStateSnapshotSpec;
-import org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotState;
 import org.apache.flink.kubernetes.operator.controller.FlinkStateSnapshotContext;
 import org.apache.flink.kubernetes.operator.exception.ReconciliationException;
 import org.apache.flink.kubernetes.operator.reconciler.ReconciliationUtils;
@@ -39,6 +38,8 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Optional;
 
+import static org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotStatus.State.TRIGGER_PENDING;
+
 /** The reconciler for the {@link org.apache.flink.kubernetes.operator.api.FlinkStateSnapshot}. */
 @RequiredArgsConstructor
 public class StateSnapshotReconciler {
@@ -52,7 +53,7 @@ public class StateSnapshotReconciler {
         var resource = ctx.getResource();
 
         var savepointState = resource.getStatus().getState();
-        if (!FlinkStateSnapshotState.TRIGGER_PENDING.equals(savepointState)) {
+        if (!TRIGGER_PENDING.equals(savepointState)) {
             return;
         }
 

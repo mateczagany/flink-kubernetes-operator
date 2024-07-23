@@ -190,7 +190,7 @@ This serves as a full reference for FlinkDeployment and FlinkSessionJob custom r
 | checkpointTriggerNonce | java.lang.Long | Nonce used to manually trigger checkpoint for the running job. In order to trigger a checkpoint, change the number to a different non-null value. |
 | upgradeMode | org.apache.flink.kubernetes.operator.api.spec.UpgradeMode | Upgrade mode of the Flink job. |
 | allowNonRestoredState | java.lang.Boolean | Allow checkpoint state that cannot be mapped to any job vertex in tasks. |
-| savepointRedeployNonce | java.lang.Long | Nonce used to trigger a full redeployment of the job from the savepoint path specified in initialSavepointPath or initialSavepointName. In order to trigger redeployment, change the number to a different non-null value. Rollback is not possible after redeployment. |
+| savepointRedeployNonce | java.lang.Long | Nonce used to trigger a full redeployment of the job from the savepoint path specified in initialSavepointPath or the path/FlinkStateSnapshot reference in flinkStateSnapshotReference. In order to trigger redeployment, change the number to a different non-null value. Rollback is not possible after redeployment. |
 
 ### JobState
 **Class**: org.apache.flink.kubernetes.operator.api.spec.JobState
@@ -350,10 +350,18 @@ This serves as a full reference for FlinkDeployment and FlinkSessionJob custom r
 | lifecycleState | org.apache.flink.kubernetes.operator.api.lifecycle.ResourceLifecycleState | Lifecycle state of the Flink resource (including being rolled back, failed etc.). |
 | reconciliationStatus | org.apache.flink.kubernetes.operator.api.status.FlinkSessionJobReconciliationStatus | Status of the last reconcile operation. |
 
-### FlinkStateSnapshotState
-**Class**: org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotState
+### FlinkStateSnapshotStatus
+**Class**: org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotStatus
 
-**Description**: Describes current snapshot state.
+**Description**: Last observed status of the Flink state snapshot.
+
+| Parameter | Type | Docs |
+| ----------| ---- | ---- |
+
+### State
+**Class**: org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotStatus.State
+
+**Description**: Describes state of a snapshot.
 
 | Value | Docs |
 | ----- | ---- |
@@ -362,21 +370,26 @@ This serves as a full reference for FlinkDeployment and FlinkSessionJob custom r
 | IN_PROGRESS | Snapshot in progress. |
 | TRIGGER_PENDING | Not yet processed by the operator. |
 | ABANDONED | Snapshot abandoned due to job failure/upgrade. |
-
-### FlinkStateSnapshotStatus
-**Class**: org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotStatus
-
-**Description**: Last observed status of the Flink state snapshot.
-
-| Parameter | Type | Docs |
-| ----------| ---- | ---- |
-| state | org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotState | Current state of the snapshot. |
+| state | org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotStatus.State | Current state of the snapshot. |
 | triggerId | java.lang.String | Trigger ID of the snapshot. |
 | triggerTimestamp | java.lang.String | Trigger timestamp of a pending snapshot operation. |
 | resultTimestamp | java.lang.String | Timestamp when the snapshot was last created/failed. |
 | path | java.lang.String | Final path of the snapshot. |
 | error | java.lang.String | Optional error information about the FlinkStateSnapshot. |
 | failures | int | Number of failures, used for tracking max retries. |
+
+### State
+**Class**: org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotStatus.State
+
+**Description**: Describes state of a snapshot.
+
+| Value | Docs |
+| ----- | ---- |
+| COMPLETED | Snapshot was successful and available. |
+| FAILED | Error during snapshot. |
+| IN_PROGRESS | Snapshot in progress. |
+| TRIGGER_PENDING | Not yet processed by the operator. |
+| ABANDONED | Snapshot abandoned due to job failure/upgrade. |
 
 ### JobManagerDeploymentStatus
 **Class**: org.apache.flink.kubernetes.operator.api.status.JobManagerDeploymentStatus
