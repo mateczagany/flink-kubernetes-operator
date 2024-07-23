@@ -35,7 +35,7 @@ public class FlinkResourceEventCollector implements BiConsumer<AbstractFlinkReso
 
     @Override
     public void accept(AbstractFlinkResource<?, ?> abstractFlinkResource, Event event) {
-        LOG.info(AuditUtils.format(event));
+        LOG.info(AuditUtils.format(event, "Job"));
         events.add(event);
     }
 }

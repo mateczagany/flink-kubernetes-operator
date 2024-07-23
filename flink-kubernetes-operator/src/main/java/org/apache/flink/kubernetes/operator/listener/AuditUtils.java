@@ -25,6 +25,7 @@ import org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotStatus;
 
 import io.fabric8.kubernetes.api.model.Event;
 import lombok.NonNull;
+import org.apache.commons.lang3.ObjectUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,7 +39,7 @@ public class AuditUtils {
     }
 
     public static void logContext(FlinkResourceListener.FlinkStateSnapshotEventContext ctx) {
-        LOG.info(format(ctx.getEvent()));
+        LOG.info(format(ctx.getEvent(), "Snapshot"));
     }
 
     public static <R extends AbstractFlinkResource<?, S>, S extends CommonStatus<?>>
@@ -48,13 +49,14 @@ public class AuditUtils {
 
     public static <R extends AbstractFlinkResource<?, ?>> void logContext(
             FlinkResourceListener.ResourceEventContext<R> ctx) {
-        LOG.info(format(ctx.getEvent()));
+        LOG.info(format(ctx.getEvent(), "Job"));
     }
 
     private static String format(@NonNull CommonStatus<?> status) {
         var lifeCycleState = status.getLifecycleState();
         return String.format(
-                ">>> Status | %-7s | %-15s | %s ",
+                ">>> %-16s | %-7s | %-15s | %s ",
+                "Status[Job]",
                 StringUtils.isEmpty(status.getError()) ? "Info" : "Error",
                 lifeCycleState,
                 StringUtils.isEmpty(status.getError())
@@ -63,19 +65,17 @@ public class AuditUtils {
     }
 
     private static String format(@NonNull FlinkStateSnapshotStatus status) {
-        if (StringUtils.isEmpty(status.getError())) {
-            return String.format(
-                    ">>> Status[Snapshot] | Info | %s | %s", status.getState(), status.getPath());
-        } else {
-            return String.format(
-                    ">>> Status[Snapshot] | Error | %s | %s", status.getState(), status.getError());
-        }
+        String message = ObjectUtils.firstNonNull(status.getError(), status.getPath(), "");
+        return String.format(
+                ">>> %-16s | %-7s | %s", "Status[Snapshot]", status.getState(), message);
     }
 
     @VisibleForTesting
-    public static String format(@NonNull Event event) {
+    public static String format(@NonNull Event event, String component) {
+        var componentMessage = String.format("Event[%s]", component);
         return String.format(
-                ">>> Event  | %-7s | %-15s | %s",
+                ">>> %-16s | %-7s | %-15s | %s",
+                componentMessage,
                 event.getType().equals("Normal") ? "Info" : event.getType(),
                 event.getReason().toUpperCase(),
                 event.getMessage());

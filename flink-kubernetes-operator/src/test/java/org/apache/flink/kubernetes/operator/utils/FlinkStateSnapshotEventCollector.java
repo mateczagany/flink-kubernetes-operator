@@ -36,7 +36,7 @@ public class FlinkStateSnapshotEventCollector implements BiConsumer<FlinkStateSn
 
     @Override
     public void accept(FlinkStateSnapshot savepoint, Event event) {
-        LOG.info(AuditUtils.format(event));
+        LOG.info(AuditUtils.format(event, "Snapshot"));
         events.add(event);
     }
 }
