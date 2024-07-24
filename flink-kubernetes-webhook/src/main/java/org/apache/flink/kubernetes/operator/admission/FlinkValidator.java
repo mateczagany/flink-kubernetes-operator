@@ -107,23 +107,24 @@ public class FlinkValidator implements Validator<HasMetadata> {
         var namespace = savepoint.getMetadata().getNamespace();
         var jobRef = savepoint.getSpec().getJobReference();
 
-        if (jobRef.getName() == null || jobRef.getKind() == null) {
-            throw new NotAllowedException("Job reference name and kind must be supplied.");
-        }
-
-        AbstractFlinkResource<?, ?> targetResource;
-        var key = Cache.namespaceKeyFunc(namespace, jobRef.getName());
-        if (JobKind.FLINK_DEPLOYMENT.equals(jobRef.getKind())) {
-            targetResource =
-                    informerManager.getFlinkDepInformer(namespace).getStore().getByKey(key);
-        } else {
-            targetResource =
-                    informerManager.getFlinkSessionJobInformer(namespace).getStore().getByKey(key);
+        AbstractFlinkResource<?, ?> targetResource = null;
+        if (jobRef != null && jobRef.getName() != null && jobRef.getKind() != null) {
+            var key = Cache.namespaceKeyFunc(namespace, jobRef.getName());
+            if (JobKind.FLINK_DEPLOYMENT.equals(jobRef.getKind())) {
+                targetResource =
+                        informerManager.getFlinkDepInformer(namespace).getStore().getByKey(key);
+            } else if (JobKind.FLINK_SESSION_JOB.equals(jobRef.getKind())) {
+                targetResource =
+                        informerManager
+                                .getFlinkSessionJobInformer(namespace)
+                                .getStore()
+                                .getByKey(key);
+            }
         }
 
         for (FlinkResourceValidator validator : validators) {
             Optional<String> validationError =
-                    validator.validateStateSnapshot(savepoint, Optional.of(targetResource));
+                    validator.validateStateSnapshot(savepoint, Optional.ofNullable(targetResource));
             if (validationError.isPresent()) {
                 throw new NotAllowedException(validationError.get());
             }
