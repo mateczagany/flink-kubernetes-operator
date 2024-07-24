@@ -239,6 +239,11 @@ public class FlinkStateSnapshotControllerTest {
         assertThat(flinkService.getDisposedSavepoints()).isEmpty();
 
         snapshot.getSpec().getSavepoint().setDisposeOnDelete(true);
+        snapshot.getStatus().setState(ABANDONED);
+        assertDeleteControl(controller.cleanup(snapshot, context), true, null);
+        assertThat(flinkService.getDisposedSavepoints()).isEmpty();
+
+        snapshot.getSpec().getSavepoint().setDisposeOnDelete(true);
         snapshot.getStatus().setState(IN_PROGRESS);
         assertDeleteControl(
                 controller.cleanup(snapshot, context),

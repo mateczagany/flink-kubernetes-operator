@@ -41,6 +41,7 @@ import org.apache.flink.kubernetes.operator.api.spec.KubernetesDeploymentMode;
 import org.apache.flink.kubernetes.operator.api.spec.Resource;
 import org.apache.flink.kubernetes.operator.api.spec.TaskManagerSpec;
 import org.apache.flink.kubernetes.operator.api.spec.UpgradeMode;
+import org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotStatus;
 import org.apache.flink.kubernetes.operator.api.status.JobManagerDeploymentStatus;
 import org.apache.flink.kubernetes.operator.config.FlinkConfigBuilder;
 import org.apache.flink.kubernetes.operator.config.FlinkConfigManager;
@@ -518,7 +519,12 @@ public class DefaultValidator implements FlinkResourceValidator {
             return Optional.of("Job reference must be supplied for this snapshot");
         }
 
-        if (target.isEmpty()) {
+        // If the savepoint has already been processed by the operator, we don't need to check the
+        // job reference.
+        if (target.isEmpty()
+                && (savepoint.getStatus() == null
+                        || FlinkStateSnapshotStatus.State.TRIGGER_PENDING.equals(
+                                savepoint.getStatus().getState()))) {
             return Optional.of(
                     String.format(
                             "Target for snapshot (%s) in namespace %s was not found",

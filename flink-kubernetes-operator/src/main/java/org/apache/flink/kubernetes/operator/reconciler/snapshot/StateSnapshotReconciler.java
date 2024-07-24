@@ -118,19 +118,17 @@ public class StateSnapshotReconciler {
                         resourceName);
                 return DeleteControl.noFinalizerRemoval()
                         .rescheduleAfter(ctx.getOperatorConfig().getReconcileInterval().toMillis());
-            case FAILED:
-                LOG.info(
-                        "Savepoint was not successful, cleaning up resource {} without disposal...",
-                        resourceName);
-                return DeleteControl.defaultDelete();
-            case TRIGGER_PENDING:
-                LOG.info(
-                        "Savepoint has not started yet, cleaning up resource {} without disposal...",
-                        resourceName);
-                return DeleteControl.defaultDelete();
             case COMPLETED:
                 var flinkDeployment = getFlinkDeployment(ctx);
                 return handleSnapshotCleanup(resource, flinkDeployment, ctx);
+            case FAILED:
+            case TRIGGER_PENDING:
+            case ABANDONED:
+                LOG.info(
+                        "Savepoint state is {}, cleaning up resource {} without disposal...",
+                        state.name(),
+                        resourceName);
+                return DeleteControl.defaultDelete();
             default:
                 LOG.info("Unknown savepoint state for {}: {}", resourceName, state);
                 return DeleteControl.defaultDelete();
