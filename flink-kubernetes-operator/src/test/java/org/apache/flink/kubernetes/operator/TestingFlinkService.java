@@ -340,7 +340,7 @@ public class TestingFlinkService extends AbstractFlinkService {
     @Override
     public String triggerCheckpoint(
             String jobId,
-            org.apache.flink.core.execution.CheckpointType checkpointFormatType,
+            org.apache.flink.core.execution.CheckpointType checkpointType,
             Configuration conf) {
         var triggerId = "checkpoint_trigger_" + checkpointTriggerCounter++;
         checkpointTriggers.put(triggerId, false);

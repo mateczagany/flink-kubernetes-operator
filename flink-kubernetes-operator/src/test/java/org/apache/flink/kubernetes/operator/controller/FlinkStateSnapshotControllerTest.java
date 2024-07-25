@@ -536,7 +536,7 @@ public class FlinkStateSnapshotControllerTest {
 
         // observe phase triggers event for snapshot abandoned, then validation will also trigger an
         // event.
-        assertThat(flinkStateSnapshotEventCollector.events).hasSize(2);
+        assertThat(flinkStateSnapshotEventCollector.events).hasSize(1);
         assertThat(flinkStateSnapshotEventCollector.events.get(0))
                 .satisfies(
                         event -> {

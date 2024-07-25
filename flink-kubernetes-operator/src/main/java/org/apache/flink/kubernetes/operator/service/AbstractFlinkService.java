@@ -539,7 +539,6 @@ public abstract class AbstractFlinkService implements FlinkService {
             String savepointDirectory,
             Configuration conf)
             throws Exception {
-        LOG.info("Triggering new savepoint using new method");
         try (var clusterClient = getClusterClient(conf)) {
             var savepointTriggerHeaders = SavepointTriggerHeaders.getInstance();
             var savepointTriggerMessageParameters =
@@ -565,7 +564,7 @@ public abstract class AbstractFlinkService implements FlinkService {
     @Override
     public String triggerCheckpoint(
             String jobId,
-            org.apache.flink.core.execution.CheckpointType checkpointFormatType,
+            org.apache.flink.core.execution.CheckpointType checkpointType,
             Configuration conf)
             throws Exception {
         LOG.info("Triggering new checkpoint");
@@ -582,7 +581,7 @@ public abstract class AbstractFlinkService implements FlinkService {
                             .sendRequest(
                                     checkpointTriggerHeaders,
                                     checkpointTriggerMessageParameters,
-                                    new CheckpointTriggerRequestBody(checkpointFormatType, null))
+                                    new CheckpointTriggerRequestBody(checkpointType, null))
                             .get(timeout, TimeUnit.SECONDS);
             LOG.info("Checkpoint successfully triggered: " + response.getTriggerId().toHexString());
             return response.getTriggerId().toHexString();

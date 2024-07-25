@@ -186,7 +186,7 @@ public abstract class AbstractFlinkResourceReconciler<
 
         if (spec.getJob().getFlinkStateSnapshotReference() != null) {
             return Optional.of(
-                    FlinkStateSnapshotUtils.getAndValidateFlinkStateSnapshotPath(
+                    FlinkStateSnapshotUtils.getValidatedFlinkStateSnapshotPath(
                             ctx.getKubernetesClient(),
                             spec.getJob().getFlinkStateSnapshotReference()));
         }

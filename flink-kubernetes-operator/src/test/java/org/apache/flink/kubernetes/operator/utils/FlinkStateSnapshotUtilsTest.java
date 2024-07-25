@@ -70,15 +70,15 @@ public class FlinkStateSnapshotUtilsTest {
     private static final String SAVEPOINT_PATH = "/tmp/savepoint-01";
 
     @Test
-    public void testGetAndValidateFlinkStateSnapshotPathPathGiven() {
+    public void testGetValidatedFlinkStateSnapshotPathPathGiven() {
         var snapshotRef = FlinkStateSnapshotReference.builder().path(SAVEPOINT_PATH).build();
         var snapshotResult =
-                FlinkStateSnapshotUtils.getAndValidateFlinkStateSnapshotPath(client, snapshotRef);
+                FlinkStateSnapshotUtils.getValidatedFlinkStateSnapshotPath(client, snapshotRef);
         assertEquals(SAVEPOINT_PATH, snapshotResult);
     }
 
     @Test
-    public void testGetAndValidateFlinkStateSnapshotPathFoundResource() {
+    public void testGetValidatedFlinkStateSnapshotPathFoundResource() {
         var snapshot = initSavepoint(COMPLETED, null);
         client.resource(snapshot).create();
 
@@ -88,32 +88,32 @@ public class FlinkStateSnapshotUtilsTest {
                         .name(SAVEPOINT_NAME)
                         .build();
         var snapshotResult =
-                FlinkStateSnapshotUtils.getAndValidateFlinkStateSnapshotPath(client, snapshotRef);
+                FlinkStateSnapshotUtils.getValidatedFlinkStateSnapshotPath(client, snapshotRef);
         assertEquals(SAVEPOINT_PATH, snapshotResult);
     }
 
     @Test
-    public void testGetAndValidateFlinkStateSnapshotPathInvalidName() {
+    public void testGetValidatedFlinkStateSnapshotPathInvalidName() {
         var snapshotRef =
                 FlinkStateSnapshotReference.builder().namespace(NAMESPACE).name("  ").build();
         assertThrows(
                 IllegalArgumentException.class,
                 () ->
-                        FlinkStateSnapshotUtils.getAndValidateFlinkStateSnapshotPath(
+                        FlinkStateSnapshotUtils.getValidatedFlinkStateSnapshotPath(
                                 client, snapshotRef));
     }
 
     @Test
-    public void testGetAndValidateFlinkStateSnapshotPathNotFound() {
+    public void testGetValidatedFlinkStateSnapshotPathNotFound() {
         var snapshotRef =
                 FlinkStateSnapshotReference.builder()
                         .namespace("not-exists")
                         .name("not-exists")
                         .build();
         assertThrows(
-                IllegalArgumentException.class,
+                IllegalStateException.class,
                 () ->
-                        FlinkStateSnapshotUtils.getAndValidateFlinkStateSnapshotPath(
+                        FlinkStateSnapshotUtils.getValidatedFlinkStateSnapshotPath(
                                 client, snapshotRef));
     }
 
@@ -129,12 +129,12 @@ public class FlinkStateSnapshotUtilsTest {
                         .name(SAVEPOINT_NAME)
                         .build();
         var snapshotResult =
-                FlinkStateSnapshotUtils.getAndValidateFlinkStateSnapshotPath(client, snapshotRef);
+                FlinkStateSnapshotUtils.getValidatedFlinkStateSnapshotPath(client, snapshotRef);
         assertEquals(SAVEPOINT_PATH, snapshotResult);
     }
 
     @Test
-    public void testGetAndValidateFlinkStateSnapshotPathNotCompleted() {
+    public void testGetValidatedFlinkStateSnapshotPathNotCompleted() {
         var snapshot = initSavepoint(IN_PROGRESS, null);
         client.resource(snapshot).create();
 
@@ -144,9 +144,9 @@ public class FlinkStateSnapshotUtilsTest {
                         .name(SAVEPOINT_NAME)
                         .build();
         assertThrows(
-                IllegalArgumentException.class,
+                IllegalStateException.class,
                 () ->
-                        FlinkStateSnapshotUtils.getAndValidateFlinkStateSnapshotPath(
+                        FlinkStateSnapshotUtils.getValidatedFlinkStateSnapshotPath(
                                 client, snapshotRef));
     }
 

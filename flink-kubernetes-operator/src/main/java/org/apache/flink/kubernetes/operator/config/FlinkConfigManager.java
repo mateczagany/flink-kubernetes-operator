@@ -74,6 +74,7 @@ public class FlinkConfigManager {
 
     private volatile Configuration defaultConfig;
     private volatile FlinkOperatorConfiguration defaultOperatorConfiguration;
+    // TODO: From 1.11 release, snapshot CRD should be mandatory and this can be removed.
     private final boolean snapshotCrdInstalled;
     private final AtomicLong defaultConfigVersion = new AtomicLong(0);
     private final LoadingCache<Key, Configuration> cache;

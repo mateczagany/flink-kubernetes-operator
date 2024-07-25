@@ -96,7 +96,7 @@ public interface FlinkService {
 
     String triggerCheckpoint(
             String jobId,
-            org.apache.flink.core.execution.CheckpointType checkpointFormatType,
+            org.apache.flink.core.execution.CheckpointType checkpointType,
             Configuration conf)
             throws Exception;
 

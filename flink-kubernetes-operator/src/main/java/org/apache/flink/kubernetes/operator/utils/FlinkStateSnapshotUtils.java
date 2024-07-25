@@ -63,9 +63,9 @@ public class FlinkStateSnapshotUtils {
      * @param snapshotRef snapshot reference
      * @return found savepoint path
      */
-    public static String getAndValidateFlinkStateSnapshotPath(
+    public static String getValidatedFlinkStateSnapshotPath(
             KubernetesClient kubernetesClient, FlinkStateSnapshotReference snapshotRef) {
-        if (!StringUtils.isBlank(snapshotRef.getPath())) {
+        if (StringUtils.isNotBlank(snapshotRef.getPath())) {
             return snapshotRef.getPath();
         }
 
@@ -74,33 +74,20 @@ public class FlinkStateSnapshotUtils {
                     String.format("Invalid snapshot name: %s", snapshotRef.getName()));
         }
 
-        FlinkStateSnapshot result;
-        if (snapshotRef.getName() != null) {
-            var namespace = snapshotRef.getNamespace();
-            if (namespace == null) {
-                result =
-                        kubernetesClient
+        var result =
+                snapshotRef.getNamespace() == null
+                        ? kubernetesClient
                                 .resources(FlinkStateSnapshot.class)
                                 .withName(snapshotRef.getName())
-                                .get();
-            } else {
-                result =
-                        kubernetesClient
+                                .get()
+                        : kubernetesClient
                                 .resources(FlinkStateSnapshot.class)
-                                .inNamespace(namespace)
+                                .inNamespace(snapshotRef.getNamespace())
                                 .withName(snapshotRef.getName())
                                 .get();
-            }
-        } else {
-            result =
-                    kubernetesClient
-                            .resources(FlinkStateSnapshot.class)
-                            .withName(snapshotRef.getName())
-                            .get();
-        }
 
         if (result == null) {
-            throw new IllegalArgumentException(
+            throw new IllegalStateException(
                     String.format(
                             "Cannot find snapshot %s in namespace %s.",
                             snapshotRef.getNamespace(), snapshotRef.getName()));
@@ -116,7 +103,7 @@ public class FlinkStateSnapshotUtils {
         }
 
         if (COMPLETED != result.getStatus().getState()) {
-            throw new IllegalArgumentException(
+            throw new IllegalStateException(
                     String.format(
                             "Snapshot %s/%s is not complete yet.",
                             snapshotRef.getNamespace(), snapshotRef.getName()));
@@ -124,7 +111,7 @@ public class FlinkStateSnapshotUtils {
 
         var path = result.getStatus().getPath();
         if (StringUtils.isBlank(path)) {
-            throw new IllegalArgumentException(
+            throw new IllegalStateException(
                     String.format(
                             "Snapshot %s/%s path is incorrect: %s.",
                             snapshotRef.getNamespace(), snapshotRef.getName(), path));
@@ -266,21 +253,21 @@ public class FlinkStateSnapshotUtils {
             AbstractFlinkResource<?, ?> flinkResource,
             SavepointFormatType savepointFormatType,
             String savepointPath) {
-        if (isSnapshotResourceEnabled(operatorConf, conf)) {
-            var snapshot =
-                    createSavepointResource(
-                            kubernetesClient,
-                            flinkResource,
-                            savepointPath,
-                            SnapshotTriggerType.UPGRADE,
-                            savepointFormatType,
-                            conf.get(
-                                    KubernetesOperatorConfigOptions
-                                            .OPERATOR_JOB_SAVEPOINT_DISPOSE_ON_DELETE));
-            return FlinkStateSnapshotReference.fromResource(snapshot);
-        } else {
+        if (!isSnapshotResourceEnabled(operatorConf, conf)) {
             return FlinkStateSnapshotReference.fromPath(savepointPath);
         }
+
+        var disposeOnDelete =
+                conf.get(KubernetesOperatorConfigOptions.OPERATOR_JOB_SAVEPOINT_DISPOSE_ON_DELETE);
+        var snapshot =
+                createSavepointResource(
+                        kubernetesClient,
+                        flinkResource,
+                        savepointPath,
+                        SnapshotTriggerType.UPGRADE,
+                        savepointFormatType,
+                        disposeOnDelete);
+        return FlinkStateSnapshotReference.fromResource(snapshot);
     }
 
     /**

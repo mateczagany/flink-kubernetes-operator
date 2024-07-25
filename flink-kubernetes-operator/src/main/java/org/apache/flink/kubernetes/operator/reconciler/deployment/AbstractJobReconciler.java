@@ -292,7 +292,7 @@ public abstract class AbstractJobReconciler<
                             .map(
                                     ref ->
                                             FlinkStateSnapshotUtils
-                                                    .getAndValidateFlinkStateSnapshotPath(
+                                                    .getValidatedFlinkStateSnapshotPath(
                                                             ctx.getKubernetesClient(), ref));
         }
 
@@ -485,7 +485,7 @@ public abstract class AbstractJobReconciler<
         if (snapshotRef != null) {
             savepointPath =
                     Optional.of(
-                            FlinkStateSnapshotUtils.getAndValidateFlinkStateSnapshotPath(
+                            FlinkStateSnapshotUtils.getValidatedFlinkStateSnapshotPath(
                                     ctx.getKubernetesClient(), snapshotRef));
             status.getJobStatus().setUpgradeSnapshotReference(snapshotRef);
         }

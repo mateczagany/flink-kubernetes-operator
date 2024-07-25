@@ -99,11 +99,11 @@ public class FlinkMutator implements Mutator<HasMetadata> {
 
     private FlinkStateSnapshot mutateStateSnapshot(HasMetadata resource) {
         try {
-            var savepoint = mapper.convertValue(resource, FlinkStateSnapshot.class);
-            for (FlinkResourceMutator mutator : mutators) {
-                savepoint = mutator.mutateStateSnapshot(savepoint);
+            var snapshot = mapper.convertValue(resource, FlinkStateSnapshot.class);
+            for (var mutator : mutators) {
+                snapshot = mutator.mutateStateSnapshot(snapshot);
             }
-            return savepoint;
+            return snapshot;
         } catch (Exception e) {
             throw new RuntimeException(e);
         }

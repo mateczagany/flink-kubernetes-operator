@@ -17,6 +17,7 @@
 
 package org.apache.flink.kubernetes.operator.utils;
 
+import org.apache.flink.kubernetes.operator.api.AbstractFlinkResource;
 import org.apache.flink.kubernetes.operator.api.FlinkDeployment;
 import org.apache.flink.kubernetes.operator.api.FlinkSessionJob;
 import org.apache.flink.kubernetes.operator.api.FlinkStateSnapshot;
@@ -31,6 +32,7 @@ import io.javaoperatorsdk.operator.api.reconciler.EventSourceContext;
 import io.javaoperatorsdk.operator.processing.event.ResourceID;
 import io.javaoperatorsdk.operator.processing.event.source.EventSource;
 import io.javaoperatorsdk.operator.processing.event.source.PrimaryToSecondaryMapper;
+import io.javaoperatorsdk.operator.processing.event.source.SecondaryToPrimaryMapper;
 import io.javaoperatorsdk.operator.processing.event.source.informer.InformerEventSource;
 import io.javaoperatorsdk.operator.processing.event.source.informer.Mappers;
 
@@ -168,22 +170,7 @@ public class EventSourceUtils {
 
         InformerConfiguration<FlinkSessionJob> configurationFlinkSessionJob =
                 InformerConfiguration.from(FlinkSessionJob.class, context)
-                        .withSecondaryToPrimaryMapper(
-                                flinkResource ->
-                                        context
-                                                .getPrimaryCache()
-                                                .byIndex(
-                                                        FLINK_STATE_SNAPSHOT_IDX,
-                                                        indexKey(
-                                                                flinkResource
-                                                                        .getMetadata()
-                                                                        .getName(),
-                                                                flinkResource
-                                                                        .getMetadata()
-                                                                        .getNamespace()))
-                                                .stream()
-                                                .map(ResourceID::fromResource)
-                                                .collect(Collectors.toSet()))
+                        .withSecondaryToPrimaryMapper(getSnapshotPrimaryMapper(context))
                         .withPrimaryToSecondaryMapper(
                                 (PrimaryToSecondaryMapper<FlinkStateSnapshot>)
                                         snapshot -> {
@@ -208,22 +195,7 @@ public class EventSourceUtils {
 
         InformerConfiguration<FlinkDeployment> configurationFlinkDeployment =
                 InformerConfiguration.from(FlinkDeployment.class, context)
-                        .withSecondaryToPrimaryMapper(
-                                flinkResource ->
-                                        context
-                                                .getPrimaryCache()
-                                                .byIndex(
-                                                        FLINK_STATE_SNAPSHOT_IDX,
-                                                        indexKey(
-                                                                flinkResource
-                                                                        .getMetadata()
-                                                                        .getName(),
-                                                                flinkResource
-                                                                        .getMetadata()
-                                                                        .getNamespace()))
-                                                .stream()
-                                                .map(ResourceID::fromResource)
-                                                .collect(Collectors.toSet()))
+                        .withSecondaryToPrimaryMapper(getSnapshotPrimaryMapper(context))
                         .withPrimaryToSecondaryMapper(
                                 (PrimaryToSecondaryMapper<FlinkStateSnapshot>)
                                         snapshot -> {
@@ -267,6 +239,22 @@ public class EventSourceUtils {
                 new InformerEventSource<>(configurationFlinkDeployment, context);
 
         return new EventSource[] {flinkSessionJobEventSource, flinkDeploymentEventSource};
+    }
+
+    private static <T extends AbstractFlinkResource<?, ?>>
+            SecondaryToPrimaryMapper<T> getSnapshotPrimaryMapper(
+                    EventSourceContext<FlinkStateSnapshot> ctx) {
+        return flinkResource ->
+                ctx
+                        .getPrimaryCache()
+                        .byIndex(
+                                FLINK_STATE_SNAPSHOT_IDX,
+                                indexKey(
+                                        flinkResource.getMetadata().getName(),
+                                        flinkResource.getMetadata().getNamespace()))
+                        .stream()
+                        .map(ResourceID::fromResource)
+                        .collect(Collectors.toSet());
     }
 
     private static String indexKey(String name, String namespace) {

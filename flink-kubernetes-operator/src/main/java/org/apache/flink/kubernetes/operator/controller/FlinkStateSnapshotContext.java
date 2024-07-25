@@ -57,16 +57,16 @@ public class FlinkStateSnapshotContext {
     /**
      * @return Operator configuration for this resource.
      */
-    public FlinkOperatorConfiguration operatorConfig() {
-        return configManager.getOperatorConfiguration(
-                getResource().getMetadata().getNamespace(), null);
+    private FlinkOperatorConfiguration operatorConfig() {
+        return getConfigManager()
+                .getOperatorConfiguration(getResource().getMetadata().getNamespace(), null);
     }
 
-    public Configuration referencedJobObserveConfig() {
-        return configManager.getObserveConfig(getReferencedJobFlinkDeployment());
+    private Configuration referencedJobObserveConfig() {
+        return getConfigManager().getObserveConfig(getReferencedJobFlinkDeployment());
     }
 
-    public FlinkDeployment referencedJobFlinkDeployment() {
+    private FlinkDeployment referencedJobFlinkDeployment() {
         return getJosdkContext()
                 .getSecondaryResource(FlinkDeployment.class)
                 .orElseThrow(
