@@ -41,7 +41,6 @@ import org.apache.commons.lang3.StringUtils;
 import javax.annotation.Nullable;
 
 import java.time.Instant;
-import java.util.UUID;
 
 import static org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotStatus.State.ABANDONED;
 import static org.apache.flink.kubernetes.operator.api.status.FlinkStateSnapshotStatus.State.COMPLETED;
@@ -221,11 +220,11 @@ public class FlinkStateSnapshotUtils {
             SnapshotTriggerType triggerType,
             AbstractFlinkResource<?, ?> referencedResource) {
         return String.format(
-                "%s-%s-%s-%s",
+                "%s-%s-%s-%d",
                 referencedResource.getMetadata().getName(),
                 snapshotType.name().toLowerCase(),
                 triggerType.name().toLowerCase(),
-                UUID.randomUUID());
+                System.currentTimeMillis());
     }
 
     /**
