@@ -368,13 +368,17 @@ public class SnapshotUtils {
      * @return True if last savepoint is known
      */
     public static boolean lastSavepointKnown(CommonStatus<?> status) {
-        var lastSavepoint = status.getJobStatus().getSavepointInfo().getLastSavepoint();
+        var lastSavepoint = status.getJobStatus().getUpgradeSnapshotReference();
 
         if (lastSavepoint == null) {
             return true;
         }
-        String location = lastSavepoint.getLocation();
 
-        return !location.equals(AbstractJobReconciler.LAST_STATE_DUMMY_SP_PATH);
+        if (StringUtils.isNotBlank(lastSavepoint.getName())) {
+            return true;
+        }
+
+        var location = lastSavepoint.getPath();
+        return location != null && !location.equals(AbstractJobReconciler.LAST_STATE_DUMMY_SP_PATH);
     }
 }

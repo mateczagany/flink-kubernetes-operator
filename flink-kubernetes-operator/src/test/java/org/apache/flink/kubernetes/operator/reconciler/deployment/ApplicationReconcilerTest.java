@@ -1236,14 +1236,19 @@ public class ApplicationReconcilerTest extends OperatorTestBase {
         assertEquals(deployment.getSpec().getRestartNonce(), lastReconciledSpec.getRestartNonce());
         assertEquals(JobState.SUSPENDED, lastReconciledSpec.getJob().getState());
         assertEquals(UpgradeMode.SAVEPOINT, lastReconciledSpec.getJob().getUpgradeMode());
-        assertEquals(
-                "savepoint_0",
-                deployment
-                        .getStatus()
-                        .getJobStatus()
-                        .getSavepointInfo()
-                        .getLastSavepoint()
-                        .getLocation());
+        assertThat(TestUtils.getFlinkStateSnapshotsForResource(kubernetesClient, deployment))
+                .hasSize(1)
+                .allSatisfy(
+                        snapshot -> {
+                            assertThat(snapshot.getSpec().getSavepoint().getPath())
+                                    .isEqualTo("savepoint_0");
+                            assertEquals(
+                                    FlinkStateSnapshotReference.fromResource(snapshot),
+                                    deployment
+                                            .getStatus()
+                                            .getJobStatus()
+                                            .getUpgradeSnapshotReference());
+                        });
     }
 
     @Test

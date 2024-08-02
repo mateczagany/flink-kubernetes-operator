@@ -625,17 +625,12 @@ public class ApplicationReconcilerUpgradeModeTest extends OperatorTestBase {
         if (checkpointAvailable) {
             assertEquals(
                     ApplicationReconciler.LAST_STATE_DUMMY_SP_PATH,
-                    deployment
-                            .getStatus()
-                            .getJobStatus()
-                            .getSavepointInfo()
-                            .getLastSavepoint()
-                            .getLocation());
+                    deployment.getStatus().getJobStatus().getUpgradeSnapshotReference().getPath());
             assertEquals(
                     ApplicationReconciler.LAST_STATE_DUMMY_SP_PATH,
                     flinkService.listJobs().get(0).f0);
         } else {
-            assertNull(deployment.getStatus().getJobStatus().getSavepointInfo().getLastSavepoint());
+            assertNull(deployment.getStatus().getJobStatus().getUpgradeSnapshotReference());
             assertNull(flinkService.listJobs().get(0).f0);
         }
     }
@@ -752,12 +747,7 @@ public class ApplicationReconcilerUpgradeModeTest extends OperatorTestBase {
         // trigger a savepoint
         assertEquals(
                 ApplicationReconciler.LAST_STATE_DUMMY_SP_PATH,
-                deployment
-                        .getStatus()
-                        .getJobStatus()
-                        .getSavepointInfo()
-                        .getLastSavepoint()
-                        .getLocation());
+                deployment.getStatus().getJobStatus().getUpgradeSnapshotReference().getPath());
         assertEquals(
                 ApplicationReconciler.LAST_STATE_DUMMY_SP_PATH, flinkService.listJobs().get(0).f0);
     }
