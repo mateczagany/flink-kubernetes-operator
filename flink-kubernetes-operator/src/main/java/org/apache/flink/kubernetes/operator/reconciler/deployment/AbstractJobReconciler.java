@@ -293,6 +293,16 @@ public abstract class AbstractJobReconciler<
                                             FlinkStateSnapshotUtils
                                                     .getValidatedFlinkStateSnapshotPath(
                                                             ctx.getKubernetesClient(), ref));
+            if (savepointOpt.isEmpty()) {
+                savepointOpt =
+                        Optional.ofNullable(
+                                        ctx.getResource()
+                                                .getStatus()
+                                                .getJobStatus()
+                                                .getSavepointInfo()
+                                                .getLastSavepoint())
+                                .flatMap(s -> Optional.ofNullable(s.getLocation()));
+            }
         }
 
         deploy(ctx, spec, deployConfig, savepointOpt, requireHaMetadata);
